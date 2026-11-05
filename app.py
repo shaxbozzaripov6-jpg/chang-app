@@ -44,9 +44,19 @@ from texts import (ALERT_DUST, ALERT_PM10, CITIES, CITY_EN, LANGS, LEVEL_COLORS,
                    WIND_GUST_WARN, city_name, level, t)
 
 TOKEN = os.getenv("BOT_TOKEN", "")
-ADMIN_ID = int(os.getenv("ADMIN_ID") or 0)
-PORT = int(os.getenv("PORT") or 8080)
-DAILY_HOUR = int(os.getenv("DAILY_HOUR") or 7)
+def _int_env(name: str) -> int:
+    """Raqamli o'zgaruvchi. Noto'g'ri yozilsa (masalan, @username) dastur to'xtamaydi."""
+    raw = (os.getenv(name) or "").strip()
+    try:
+        return int(raw) if raw else 0
+    except ValueError:
+        logging.getLogger("chang_app").warning("%s noto'g'ri: %r (faqat raqam bo'lishi kerak)", name, raw)
+        return 0
+
+
+ADMIN_ID = _int_env("ADMIN_ID")
+PORT = _int_env("PORT") or 8080
+DAILY_HOUR = _int_env("DAILY_HOUR") or 7
 _domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
 WEBAPP_URL = (os.getenv("WEBAPP_URL") or (f"https://{_domain}" if _domain else "")).rstrip("/")
 MOCK = os.getenv("MOCK_DATA") == "1"  # faqat sinov uchun: internetsiz soxta ma'lumot
@@ -654,13 +664,19 @@ async def main():
     if not bot:
         log.warning("BOT_TOKEN yo'q: faqat veb-ilova ishlaydi (bot o'chiq).")
         await asyncio.Event().wait()
-    try:
-        await setup_bot(bot)
-    except Exception as e:  # noqa: BLE001
-        log.warning("Bot sozlamalari: %s", e)
     asyncio.create_task(scheduler(bot))
-    log.info("Bot ishga tushdi")
-    await dp.start_polling(bot, handle_signals=False)
+    # Bot xato bersa ham veb-ilova ishlashda davom etadi, bot esa qayta ulanadi
+    delay = 5
+    while True:
+        try:
+            await setup_bot(bot)
+            log.info("Bot ishga tushdi")
+            await dp.start_polling(bot, handle_signals=False)
+            delay = 5
+        except Exception as e:  # noqa: BLE001
+            log.error("Bot to'xtadi: %s. %s soniyadan keyin qayta urinaman (ilova ishlayapti).", e, delay)
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, 300)
 
 
 if __name__ == "__main__":
