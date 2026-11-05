@@ -5,12 +5,40 @@ Bu **ikkinchi bot**. U Telegram ichida ochiladigan **ilova (Mini App)** bilan is
 Birinchi bot (`chang-bot`) o'zgarmaydi va alohida ishlayveradi.
 
 ## Ilovada nimalar bor
-- 🏠 **Asosiy sahifa**: ob-havoga mos shahar rasmi, havo sifati o'lchagichi (PM10), PM2.5, chang, aerozol, namlik, ob-havo, shamol kompasi, keyingi 24 soat grafigi, chang va kuchli shamol ogohlantirishlari
-- 📈 **Prognoz**: 3 kunlik kartochkalar, 72 soatlik chang va shamol grafiklari (barmoq bilan bosib qiymatni ko'rish mumkin)
-- 🗺 **Xarita**: 14 shahar, har biri chang darajasi rangida
-- ⚙️ **Sozlamalar**: til (o'zbekcha asosiy, ruscha, inglizcha), bo'ron ogohlantirishlari va kunlik hisobot, sog'liq maslahatlari
-- 🌓 Telegram mavzusiga moslashadi (yorug' yoki qorong'i)
-- 🔐 Foydalanuvchi sozlamalari Telegram imzosi (initData) bilan himoyalangan
+**🏠 Asosiy**
+- Ob-havoga mos shahar rasmi, havo sifati o'lchagichi (PM10), PM2.5, chang, aerozol, namlik
+- 🎯 **Bo'ron xavfi indeksi (0–100)**: shamol, tuproq quruqligi, namlik, yog'in va chang prognozidan hisoblanadi, 3 kunlik ko'rinishi bilan
+- ⏰ **Eng toza soatlar**: tashqariga chiqish uchun eng yaxshi vaqt; yugurish, sayr, bola bilan sayr va deraza ochish uchun "mumkin / ehtiyot / tavsiya etilmaydi"
+- 🚬 **"Bugun qancha chang yutdingiz?"**: PM2.5 sigaret ekvivalentida (Berkeley Earth hisobi)
+- 🧪 **To'liq havo sifati**: AQI (AQSH), ozon, NO₂, SO₂, CO, UV indeksi
+- 📸 **Bo'ron rasmlari**: yaqin atrofdagi rasmlar va ilovadan rasm yuborish
+- Ob-havo, shamol kompasi, 24 soatlik grafik, ogohlantirishlar
+
+**📈 Prognoz**: 3 kunlik kartochkalar (bo'ron xavfi bilan), 72 soatlik chang va shamol grafiklari
+
+**🗺 Xarita**
+- 🏙 Shaharlar: 14 shahar chang darajasi rangida va 📸 bo'ron rasmlari
+- 🌪 **Chang buluti**: 3 kunlik chang harakati animatsiyasi va shamol strelkalari (▶ tugmasi)
+
+**📊 Statistika**
+- 🏆 Shaharlar reytingi (eng toza → eng changli)
+- 📅 30/90 kunlik chang tarixi: o'rtacha, changli kunlar, JSST me'yoridan oshgan kunlar, eng changli kun, taqvim va grafik
+- 🌊 Orol dengizi fojiasi: yillar bo'yicha interaktiv sxema
+
+**⚙️ Sozlamalar**
+- Til: o'zbekcha (asosiy), ruscha, inglizcha
+- 👤 **Shaxsiy profil**: astma/allergiya, homilador, keksa, bolali ota-ona, sportchi. Maslahatlar, faollik chegaralari va ogohlantirishlar moslashadi (sezgir profilda bot PM10 150 dan ogohlantiradi)
+- Bo'ron ogohlantirishlari va kunlik hisobot, sog'liq maslahatlari
+
+🌓 Telegram mavzusiga moslashadi. 🔐 Sozlamalar va rasm yuborish Telegram imzosi (initData) bilan himoyalangan.
+
+## Bo'ron rasmlari va admin
+Railway'da `ADMIN_ID` o'zgaruvchisiga o'z Telegram ID raqamingizni yozing (@userinfobot orqali bilib olasiz). Shunda:
+- foydalanuvchi ilovadan yuborgan rasm sizga ✅ / ❌ tugmalari bilan keladi;
+- tasdiqlasangiz, rasm ilovada ko'rinadi va 100 km radiusdagi obunachilarga yuboriladi;
+- `/stat` buyrug'i statistikani ko'rsatadi.
+
+`ADMIN_ID` bo'lmasa, rasmlar darhol ilovada ko'rinadi, lekin hech kimga avtomatik yuborilmaydi.
 
 ## Fayllar
 | Fayl | Vazifasi |
@@ -21,7 +49,8 @@ Birinchi bot (`chang-bot`) o'zgarmaydi va alohida ishlayveradi.
 | `texts.py` | Bot matnlari, shaharlar, darajalar, maslahatlar |
 | `api.py` | Open-Meteo'dan ma'lumot olish |
 | `scene.py` | Ob-havoga mos shahar rasmlari |
-| `db.py` | Foydalanuvchi sozlamalari (SQLite) |
+| `db.py` | Foydalanuvchi sozlamalari va bo'ron rasmlari (SQLite) |
+| `risk.py` | Bo'ron xavfi indeksi |
 | `mock_data.py` | Faqat sinov uchun soxta ma'lumot (`MOCK_DATA=1`) |
 
 ---

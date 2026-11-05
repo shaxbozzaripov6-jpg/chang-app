@@ -215,7 +215,7 @@ details .content { margin-top: 10px; font-size: 14px; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   height: calc(var(--nav-h) + var(--safe-b)); padding-bottom: var(--safe-b);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: color-mix(in srgb, var(--card) 92%, transparent);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--line);
@@ -242,3 +242,123 @@ details .content { margin-top: 10px; font-size: 14px; }
   main { max-width: 640px; margin: 0 auto; }
   .tabbar { max-width: 640px; margin: 0 auto; border-radius: 18px 18px 0 0; }
 }
+
+/* ================= Yangi bloklar ================= */
+.tab span { white-space: nowrap; font-size: 10.5px; }
+
+/* Bo'ron xavfi */
+.risk { display: grid; grid-template-columns: 112px 1fr; gap: 14px; align-items: center; }
+.risk-ring { width: 112px; height: 112px; }
+.risk-ring .rv { font-size: 30px; font-weight: 800; fill: var(--text); }
+.risk-ring .rl { font-size: 10px; fill: var(--hint); }
+.risk-level { font-size: 20px; font-weight: 800; color: var(--rc); margin: 0 0 8px; }
+.factor { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 5px; }
+.factor .bar { height: 7px; border-radius: 4px; background: var(--soft); overflow: hidden; }
+.factor .bar i { display: block; height: 100%; border-radius: 4px; background: var(--fc, var(--accent)); }
+.factor b { text-align: right; font-weight: 700; white-space: nowrap; min-width: 40px; }
+.risk-days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.risk-day { background: var(--soft); border-radius: 12px; padding: 8px; text-align: center; font-size: 12px; }
+.risk-day b { display: block; font-size: 18px; color: var(--rc); }
+
+/* Faollik */
+.best-window { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px;
+  background: color-mix(in srgb, #4caf50 14%, transparent); margin-bottom: 10px; }
+.best-window .bw-ico { font-size: 28px; }
+.best-window .bw-time { font-size: 20px; font-weight: 800; }
+.act { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.act:last-child { border-bottom: 0; }
+.act .a-ico { font-size: 24px; text-align: center; }
+.act .a-name { font-weight: 650; }
+.act .a-best { font-size: 12px; color: var(--hint); }
+.status { font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap;
+  background: color-mix(in srgb, var(--sc) 16%, transparent); color: var(--sc); }
+
+/* Sigaret */
+.cig { display: flex; align-items: center; gap: 14px; }
+.cig-num { font-size: 38px; font-weight: 800; line-height: 1; }
+.cig-icons { font-size: 22px; letter-spacing: 2px; margin-top: 4px; word-break: break-all; }
+.cig-icons .half { opacity: .35; }
+
+/* To'liq havo sifati */
+.aqi-badge { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.aqi-badge .ab-num { min-width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center;
+  font-size: 26px; font-weight: 800; color: #fff; background: var(--ac); }
+.aqi-badge .ab-name { font-weight: 750; }
+.pollutants { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pollutants .metric .m-val { font-size: 17px; }
+
+/* Profil maslahati */
+.for-you { margin-top: 12px; padding: 10px 12px; border-radius: 12px; font-size: 13px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.for-you b { color: var(--accent); }
+
+/* Bo'ron rasmlari */
+.reports-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+.report-card { flex: 0 0 150px; border-radius: 14px; overflow: hidden; background: var(--soft); scroll-snap-align: start; }
+.report-card img { width: 150px; height: 110px; object-fit: cover; display: block; background: var(--line); }
+.report-card .rc-meta { padding: 6px 8px; font-size: 12px; }
+.report-card .rc-cap { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.primary-btn { width: 100%; padding: 13px; border-radius: 14px; background: var(--accent); color: var(--accent-text);
+  font-weight: 700; margin-top: 10px; }
+.primary-btn:disabled { opacity: .5; }
+.ghost-btn { width: 100%; padding: 11px; border-radius: 14px; margin-top: 10px; font-weight: 650;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.photo-pick { display: grid; place-items: center; min-height: 140px; border-radius: 16px; border: 2px dashed var(--line);
+  margin: 10px 0; overflow: hidden; cursor: pointer; color: var(--accent); font-weight: 650; text-align: center; padding: 10px; }
+.photo-pick img { max-width: 100%; max-height: 220px; border-radius: 12px; }
+#captionInput { width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--soft); color: var(--text);
+  padding: 10px 12px; font: inherit; resize: none; }
+
+/* Xarita rejimlari va vaqt chizig'i */
+.map-seg { grid-template-columns: 1fr 1fr; margin-bottom: 10px; }
+.map-wrap { position: relative; }
+#map { height: calc(100vh - var(--top-h) - var(--nav-h) - var(--safe-b) - 74px); }
+.map-legend { position: absolute; left: 10px; bottom: 10px; margin: 0; z-index: 500; }
+.timeline { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 500; display: flex; align-items: center; gap: 10px;
+  background: var(--card); border-radius: 14px; padding: 8px 12px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.timeline[hidden] { display: none; }
+.play-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 15px; flex: none; }
+.timeline input { flex: 1; accent-color: var(--accent); }
+.time-label { font-size: 12px; font-weight: 700; min-width: 72px; text-align: right; }
+.wind-arrow svg { width: 18px; height: 18px; transform-origin: 50% 50%; transition: transform .5s; filter: drop-shadow(0 0 2px rgba(255,255,255,.9)); }
+.wind-arrow svg path { fill: #263238; }
+:root[data-scheme="dark"] .wind-arrow svg path { fill: #eceff1; }
+:root[data-scheme="dark"] .wind-arrow svg { filter: drop-shadow(0 0 2px rgba(0,0,0,.9)); }
+.report-pin { font-size: 22px; transform: translate(-50%, -50%); filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.leaflet-popup-content img { width: 200px; max-width: 100%; border-radius: 10px; display: block; margin-bottom: 6px; }
+.gradient-bar { display: inline-block; width: 90px; height: 8px; border-radius: 4px; vertical-align: middle;
+  background: linear-gradient(90deg, rgba(240,200,80,.35), #e3a33a, #b5651d, #6d3510); }
+
+/* Statistika */
+.rank { display: grid; grid-template-columns: 26px 1fr 1.2fr 40px; gap: 8px; align-items: center; padding: 6px 0; font-size: 14px; }
+.rank .r-pos { font-weight: 800; color: var(--hint); text-align: center; }
+.rank .r-bar { height: 8px; border-radius: 4px; background: var(--soft); overflow: hidden; }
+.rank .r-bar i { display: block; height: 100%; border-radius: 4px; }
+.rank b { text-align: right; }
+.rank.me .r-name { color: var(--accent); font-weight: 750; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.tile { background: var(--soft); border-radius: 14px; padding: 10px 12px; }
+.tile .t-val { font-size: 22px; font-weight: 800; }
+.tile .t-label { font-size: 12px; color: var(--hint); }
+.calendar { display: grid; grid-template-rows: repeat(7, 20px); grid-auto-flow: column; grid-auto-columns: 20px; gap: 3px; margin-top: 8px; justify-content: start; }
+.calendar i { width: 20px; height: 20px; border-radius: 4px; background: var(--soft); display: block; }
+.calendar i.empty { background: transparent; }
+.cal-legend { display: flex; align-items: center; gap: 4px; justify-content: flex-end; font-size: 11px; color: var(--hint); margin-top: 6px; }
+.cal-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.seg.two { grid-template-columns: 1fr 1fr; }
+
+/* Orol */
+.aral-svg { width: 100%; height: auto; border-radius: 14px; background: color-mix(in srgb, #d8b47a 30%, var(--card)); margin: 10px 0 6px; }
+.aral-svg .water { transition: all .6s ease; }
+.years { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; background: var(--soft); padding: 4px; border-radius: 12px; }
+.years button { padding: 8px 0; border-radius: 9px; font-size: 13px; font-weight: 650; }
+.years button.on { background: var(--card); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.aral-text { font-size: 14px; margin: 10px 0 0; min-height: 60px; }
+
+/* Profil tanlash */
+.profiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.profile-opt { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 12px; background: var(--soft);
+  font-weight: 600; font-size: 13px; text-align: left; }
+.profile-opt span:first-child { font-size: 20px; }
+.profile-opt.on { outline: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.day .d-risk { font-size: 12px; font-weight: 700; color: var(--rc); margin-top: 4px; }

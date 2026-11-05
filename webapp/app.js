@@ -6,10 +6,15 @@
   const inTelegram = !!(tg && tg.initData);
   const $ = (s, el = document) => el.querySelector(s);
   const LANGS = ["uz", "ru", "en"];
+  const PROFILES = ["none", "sensitive", "pregnant", "elderly", "child", "athlete"];
+  const SENSITIVE = ["sensitive", "pregnant", "elderly", "child"];
+  const RISK_COLORS = ["#4caf50", "#fbc02d", "#fb8c00", "#e53935"];
+  const STATUS_COLORS = ["#2e9d4f", "#e08a00", "#d93025"];
 
   const state = {
     lang: "uz",
     place: { key: "toshkent" },   // {key} yoki {lat, lon}
+    profile: "none",
     meta: null,
     data: null,
     overview: null,
@@ -17,7 +22,17 @@
     view: "home",
     charts: {},
     map: null,
-    mapMarkers: [],
+    mapLayers: { cities: null, reports: null, cloud: null, arrows: null, dots: null },
+    mapMode: "cities",
+    grid: null,
+    frame: 0,
+    playing: null,
+    history: null,
+    historyFor: null,
+    historyDays: 30,
+    reports: null,
+    aralYear: 1960,
+    photoBlob: null,
   };
 
   // ---------------- Yordamchilar ----------------
@@ -26,17 +41,24 @@
     set(k, v) { try { localStorage.setItem("chang_" + k, JSON.stringify(v)); } catch { /* maxfiy rejim */ } },
   };
 
+  const tv = (key) => {
+    const own = I18N[state.lang] && I18N[state.lang][key];
+    return own !== undefined ? own : I18N.uz[key];
+  };
   function tr(key, vars) {
-    let s = (I18N[state.lang] && I18N[state.lang][key]) || I18N.uz[key] || key;
+    let s = tv(key);
+    if (typeof s !== "string") s = key;
     if (vars) for (const k in vars) s = s.replace("{" + k + "}", vars[k]);
     return s;
   }
   const fmt = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v)) ? "—" : Number(v).toFixed(d);
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const haptic = (type = "selection") => {
     try {
       if (!tg || !tg.HapticFeedback) return;
       if (type === "selection") tg.HapticFeedback.selectionChanged();
+      else if (type === "success" || type === "error") tg.HapticFeedback.notificationOccurred(type);
       else tg.HapticFeedback.impactOccurred(type);
     } catch { /* eski Telegram */ }
   };
@@ -64,9 +86,11 @@
     return state.meta.wind_dirs[state.lang][Math.round(deg / 45) % 8];
   }
 
-  function whenText(iso) {
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tashkent" });
-    return iso.slice(0, 10) === today ? tr("today") : tr("tomorrow");
+  const todayStr = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tashkent" });
+  const whenText = (iso) => iso.slice(0, 10) === todayStr() ? tr("today") : tr("tomorrow");
+  function shortDate(iso) {
+    const d = new Date(iso.slice(0, 10) + "T12:00");
+    return d.getDate() + " " + MONTHS_SHORT[state.lang][d.getMonth()];
   }
 
   function toast(msg) {
@@ -74,15 +98,19 @@
     el.textContent = msg;
     el.classList.add("show");
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => el.classList.remove("show"), 1800);
+    toast._t = setTimeout(() => el.classList.remove("show"), 2200);
   }
 
   async function api(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     if (inTelegram) headers["X-Init-Data"] = tg.initData;
-    if (opts.body) headers["Content-Type"] = "application/json";
+    if (typeof opts.body === "string") headers["Content-Type"] = "application/json";
     const r = await fetch(path, Object.assign({}, opts, { headers }));
-    if (!r.ok) throw new Error(path + " → " + r.status);
+    if (!r.ok) {
+      const err = new Error(path + " → " + r.status);
+      err.status = r.status;
+      throw err;
+    }
     return r.json();
   }
 
@@ -90,8 +118,13 @@
     const p = state.place;
     return p.key ? "key=" + encodeURIComponent(p.key) : "lat=" + p.lat.toFixed(3) + "&lon=" + p.lon.toFixed(3);
   }
+  const placeLatLon = () => {
+    if (state.data) return [state.data.lat, state.data.lon];
+    const c = state.meta.cities.find((x) => x.key === state.place.key);
+    return c ? [c.lat, c.lon] : [state.place.lat, state.place.lon];
+  };
 
-  // ---------------- Mavzu (yorug'/qorong'i) ----------------
+  // ---------------- Mavzu ----------------
   function applyTheme() {
     const dark = tg ? tg.colorScheme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     document.documentElement.dataset.scheme = dark ? "dark" : "light";
@@ -108,10 +141,10 @@
     }
   }
 
-  // ---------------- Matnlarni joylash ----------------
   function applyI18n() {
     document.documentElement.lang = state.lang;
     document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = tr(el.dataset.i18n); });
+    $("#captionInput").placeholder = tr("captionPh");
     $("#cityName").textContent = placeName();
   }
 
@@ -132,8 +165,21 @@
     api("/api/overview").then((o) => {
       state.overview = o.cities;
       renderCityList();
-      if (state.map) renderMapMarkers();
+      if (state.view === "stats") renderStats();
+      if (state.map) renderCityMarkers();
     }).catch(() => {});
+    loadReports();
+    if (state.view === "stats") loadHistory();
+  }
+
+  async function loadReports() {
+    try {
+      const [lat, lon] = placeLatLon();
+      const r = await api(`/api/reports?lat=${lat}&lon=${lon}`);
+      state.reports = r.reports;
+    } catch { state.reports = []; }
+    renderReportsCard();
+    if (state.map) renderReportPins();
   }
 
   function renderSkeleton() {
@@ -155,8 +201,104 @@
     renderHome();
     renderForecast();
     renderSettings();
-    if (state.map) renderMapMarkers();
+    if (state.view === "stats") renderStats();
+    if (state.map) { renderCityMarkers(); renderLegend(); }
   }
+
+  // ---------------- Hisob-kitoblar ----------------
+  function hourlyIndex(times) {
+    const m = {};
+    (times || []).forEach((t, i) => { m[t] = i; });
+    return m;
+  }
+
+  function profileFactor(act) {
+    if (SENSITIVE.includes(state.profile)) return 0.6;
+    if (state.profile === "athlete" && act === "run") return 0.8;
+    return 1;
+  }
+
+  const ACTS = [
+    { id: "run", icon: "🏃", name: "actRun", good: 50, caution: 100, rain: true, heat: true },
+    { id: "walk", icon: "🚶", name: "actWalk", good: 100, caution: 250, rain: true, heat: true },
+    { id: "child", icon: "👶", name: "actChild", good: 50, caution: 100, rain: true, heat: true, wind: true },
+    { id: "window", icon: "🪟", name: "actWindow", good: 50, caution: 150, wind: true },
+  ];
+
+  // Bitta soat uchun faollik holati: 0 = mumkin, 1 = ehtiyot, 2 = tavsiya etilmaydi
+  function actStatus(act, i) {
+    const d = state.data, ah = d.air.hourly, wh = d.weather && d.weather.hourly;
+    const pm = ah.pm10[i];
+    if (pm === null || pm === undefined) return null;
+    const f = profileFactor(act.id);
+    let s = pm < act.good * f ? 0 : pm < act.caution * f ? 1 : 2;
+    const reasons = [];
+    if (wh) {
+      const wi = state._wIndex[ah.time[i]];
+      if (wi !== undefined) {
+        if (act.rain && (wh.precipitation || [])[wi] >= 0.5) { s = Math.max(s, 1); reasons.push(tr("reasonRain")); }
+        if (act.heat && (wh.temperature_2m || [])[wi] >= 35) { s = Math.max(s, 1); reasons.push(tr("reasonHeat")); }
+        if (act.wind && (wh.wind_gusts_10m || [])[wi] >= state.meta.alert.gust) { s = Math.max(s, 1); reasons.push(tr("reasonWind")); }
+      }
+    }
+    return { s, reasons };
+  }
+
+  function next24() {
+    const ah = state.data.air.hourly, now = state.data.air.current.time;
+    const start = Math.max(0, ah.time.findIndex((t) => t >= now));
+    return { start, idx: Array.from({ length: 24 }, (_, k) => start + k).filter((i) => i < ah.time.length) };
+  }
+
+  const isDaytime = (t) => { const h = +t.slice(11, 13); return h >= 6 && h <= 21; };
+  const fmtRange = (t1, t2) => {
+    const h2 = (+t2.slice(11, 13) + 1) % 24;
+    return t1.slice(11, 16) + "–" + String(h2).padStart(2, "0") + ":00";
+  };
+
+  function bestRun(act) {
+    const ah = state.data.air.hourly;
+    const { idx } = next24();
+    let best = null, cur = null;
+    for (const i of idx) {
+      const st = actStatus(act, i);
+      const ok = st && st.s === 0 && isDaytime(ah.time[i]);
+      if (ok) {
+        if (!cur) cur = { a: i, b: i }; else cur.b = i;
+      } else if (cur) {
+        if (!best) best = cur;
+        cur = null;
+      }
+    }
+    if (cur && !best) best = cur;
+    return best ? fmtRange(ah.time[best.a], ah.time[best.b]) : null;
+  }
+
+  function bestWindow() {
+    const ah = state.data.air.hourly;
+    const { idx } = next24();
+    let best = null;
+    for (let k = 0; k + 2 < idx.length; k++) {
+      const ids = [idx[k], idx[k + 1], idx[k + 2]];
+      if (!ids.every((i) => isDaytime(ah.time[i]))) continue;
+      const vals = ids.map((i) => ah.pm10[i]).filter((v) => v !== null);
+      if (vals.length < 3) continue;
+      const mean = vals.reduce((a, b) => a + b, 0) / 3;
+      if (!best || mean < best.mean) best = { mean, a: ids[0], b: ids[2] };
+    }
+    return best && { range: fmtRange(ah.time[best.a], ah.time[best.b]), mean: best.mean };
+  }
+
+  function cigarettes() {
+    const ah = state.data.air.hourly, day = state.data.air.current.time.slice(0, 10);
+    const vals = ah.time.map((t, i) => (t.startsWith(day) ? ah.pm2_5[i] : null)).filter((v) => v !== null && v !== undefined);
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length / 22;
+  }
+
+  function usAqiIdx(v) { return v <= 50 ? 0 : v <= 100 ? 1 : v <= 150 ? 2 : v <= 200 ? 3 : v <= 300 ? 4 : 5; }
+  const AQI_COLORS = ["#4caf50", "#fbc02d", "#fb8c00", "#e53935", "#8e24aa", "#7b1e1e"];
+  function uvIdx(v) { return v < 3 ? 0 : v < 6 ? 1 : v < 8 ? 2 : v < 11 ? 3 : 4; }
 
   // ---------------- Asosiy sahifa ----------------
   function gaugeSVG(pm10) {
@@ -171,9 +313,9 @@
     for (let i = 0; i < lim.length - 1; i++) {
       const [x1, y1] = pt(lim[i], r), [x2, y2] = pt(Math.min(lim[i + 1], max), r);
       arcs += `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)} A${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}"
-                stroke="${colors[i]}" stroke-width="12" fill="none" stroke-linecap="butt" opacity=".9"/>`;
+                stroke="${colors[i]}" stroke-width="12" fill="none" opacity=".9"/>`;
     }
-    const [mx, my] = pt(pm10 || 0, r);  // yoy ustidagi belgi
+    const [mx, my] = pt(pm10 || 0, r);
     return `<svg class="gauge" viewBox="0 0 150 92" aria-hidden="true">${arcs}
       <circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="8" fill="${levelColor(pm10)}" stroke="var(--card)" stroke-width="3"/>
       <text x="${cx}" y="${cy - 10}" text-anchor="middle" class="gauge-val">${fmt(pm10)}</text>
@@ -182,7 +324,7 @@
 
   function compassSVG(deg) {
     const letters = state.lang === "ru" ? ["С", "В", "Ю", "З"] : state.lang === "uz" ? ["Sh", "Shq", "J", "G'"] : ["N", "E", "S", "W"];
-    const rot = deg === null || deg === undefined ? 0 : deg + 180;  // strelka shamol qayoqqa esayotganini ko'rsatadi
+    const rot = deg === null || deg === undefined ? 0 : deg + 180;
     let ticks = "";
     for (let i = 0; i < 24; i++) {
       const a = (i * 15) * Math.PI / 180, r1 = i % 6 === 0 ? 38 : 41;
@@ -191,7 +333,7 @@
     return `<svg class="compass" viewBox="0 0 100 100" aria-hidden="true">
       <circle cx="50" cy="50" r="46" fill="var(--soft)"/>${ticks}
       <text x="50" y="22" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text)">${letters[0]}</text>
-      <text x="80" y="54" text-anchor="middle" font-size="10" fill="var(--hint)">${letters[1]}</text>
+      <text x="80" y="54" text-anchor="middle" font-size="9" fill="var(--hint)">${letters[1]}</text>
       <text x="50" y="86" text-anchor="middle" font-size="10" fill="var(--hint)">${letters[2]}</text>
       <text x="20" y="54" text-anchor="middle" font-size="10" fill="var(--hint)">${letters[3]}</text>
       <g class="needle" style="transform: rotate(${rot}deg)">
@@ -200,8 +342,106 @@
       </g></svg>`;
   }
 
+  function riskRing(score, lvl) {
+    const r = 46, c = 2 * Math.PI * r, off = c * (1 - clamp(score, 0, 100) / 100);
+    return `<svg class="risk-ring" viewBox="0 0 112 112" aria-hidden="true">
+      <circle cx="56" cy="56" r="${r}" fill="none" stroke="var(--soft)" stroke-width="11"/>
+      <circle cx="56" cy="56" r="${r}" fill="none" stroke="${RISK_COLORS[lvl]}" stroke-width="11" stroke-linecap="round"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 56 56)"/>
+      <text x="56" y="62" text-anchor="middle" class="rv">${score}</text>
+      <text x="56" y="78" text-anchor="middle" class="rl">/ 100</text></svg>`;
+  }
+
+  function riskCard() {
+    const rk = state.data.risk;
+    if (!rk) return "";
+    const f = rk.factors, lv = tv("riskLevels");
+    const bar = (label, score, val, color) => `<div class="factor"><span class="muted">${esc(label)}</span>
+      <span class="bar"><i style="width:${clamp(score, 0, 100)}%;--fc:${color}"></i></span><b>${val}</b></div>`;
+    const rainTxt = f.rain.value > 0.2 ? `${fmt(f.rain.value, 1)} ${tr("mm")}` : tr("riskRainNone");
+    const wd = WEEKDAYS_SHORT[state.lang];
+    const days = rk.days.slice(0, 3).map((d) => `<div class="risk-day" style="--rc:${RISK_COLORS[d.level]}">
+      ${esc(wd[new Date(d.date + "T12:00").getDay()])}<b>${d.score}</b></div>`).join("");
+    return `<div class="card"><h4>${esc(tr("risk"))}</h4>
+      <div class="risk">${riskRing(rk.score, rk.level)}
+        <div><p class="risk-level" style="--rc:${RISK_COLORS[rk.level]}">${esc(lv[rk.level])}</p>
+          ${bar(tr("riskWind"), f.wind.score, fmt(f.wind.value) + " " + tr("ms"), "#1e88e5")}
+          ${bar(tr("riskDry"), f.dry.score, f.dry.score + "%", "#c58b3a")}
+          ${bar(tr("riskDust"), f.dust.score, fmt(f.dust.value), "#8d6e63")}
+          ${bar(tr("riskRain"), f.rain.factor < 1 ? 100 * (1 - f.rain.factor) : 0, rainTxt, "#42a5f5")}
+        </div></div>
+      <div class="risk-days">${days}</div>
+      <p class="muted small" style="margin:10px 0 0">${esc(tr("riskNote"))}</p></div>`;
+  }
+
+  function activityCard() {
+    const bw = bestWindow();
+    const lab = [tr("stOk"), tr("stCaution"), tr("stNo")];
+    const nowI = next24().start;
+    const rows = ACTS.map((a) => {
+      const st = actStatus(a, nowI);
+      if (!st) return "";
+      const best = bestRun(a);
+      const reason = st.reasons.length ? ` · ${esc(st.reasons.join(", "))}` : "";
+      return `<div class="act"><div class="a-ico">${a.icon}</div>
+        <div><div class="a-name">${esc(tr(a.name))}</div>
+          <div class="a-best">${best ? esc(tr("bestAt", { range: best })) : esc(tr("noGood"))}${reason}</div></div>
+        <span class="status" style="--sc:${STATUS_COLORS[st.s]}">${esc(lab[st.s])}</span></div>`;
+    }).join("");
+    const head = bw ? `<div class="best-window"><div class="bw-ico">🌿</div><div>
+        <div class="muted small">${esc(tr("bestWindow"))}</div>
+        <div class="bw-time">${esc(bw.range)}</div>
+        <div class="muted small">PM10 ≈ ${fmt(bw.mean)} µg/m³</div></div></div>` : "";
+    return `<div class="card"><h4>${esc(tr("activities"))}</h4>${head}${rows}</div>`;
+  }
+
+  function cigaretteCard() {
+    const n = cigarettes();
+    if (n === null) return "";
+    const whole = Math.floor(n), frac = n - whole;
+    const icons = "🚬".repeat(Math.min(whole, 12)) + (frac >= 0.25 && whole < 12 ? '<span class="half">🚬</span>' : "");
+    return `<div class="card"><h4>${esc(tr("cigTitle"))}</h4>
+      <div class="cig"><div class="cig-num">${fmt(n, 1)}</div>
+        <div><div>${esc(tr("cigText", { n: fmt(n, 1) }))}</div><div class="cig-icons">${icons || "✨"}</div></div></div>
+      <p class="muted small" style="margin:10px 0 0">${esc(tr("cigNote"))}</p></div>`;
+  }
+
+  function fullAqCard() {
+    const a = state.data.air.current;
+    if (a.us_aqi === undefined && a.ozone === undefined) return "";
+    const ai = usAqiIdx(a.us_aqi || 0);
+    const m = (label, v, unit) => `<div class="metric"><div class="m-label">${label}</div><div class="m-val">${fmt(v)}<small>${unit}</small></div></div>`;
+    const uv = a.uv_index;
+    return `<div class="card"><h4>${esc(tr("fullAq"))}</h4>
+      ${a.us_aqi !== undefined && a.us_aqi !== null ? `<div class="aqi-badge"><div class="ab-num" style="--ac:${AQI_COLORS[ai]}">${fmt(a.us_aqi)}</div>
+        <div><div class="muted small">${esc(tr("usAqi"))}</div><div class="ab-name">${esc(tv("aqiLevels")[ai])}</div></div></div>` : ""}
+      <div class="pollutants">
+        ${m(esc(tr("ozone")), a.ozone, "µg/m³")}${m(tr("no2"), a.nitrogen_dioxide, "µg/m³")}${m(tr("so2"), a.sulphur_dioxide, "µg/m³")}
+        ${m(tr("co"), a.carbon_monoxide, "µg/m³")}
+        <div class="metric"><div class="m-label">${esc(tr("uv"))}</div><div class="m-val">${fmt(uv, 1)}<small>${uv !== undefined && uv !== null ? esc(tv("uvLevels")[uvIdx(uv)]) : ""}</small></div></div>
+        ${m(tr("pm25"), a.pm2_5, "µg/m³")}
+      </div></div>`;
+  }
+
+  function reportsCardHTML() {
+    const list = (state.reports || []).filter((r) => r.km === undefined || r.km <= 300).slice(0, 10);
+    const items = list.length ? `<div class="reports-row">${list.map((r) => `
+      <div class="report-card"><img loading="lazy" src="/api/report_photo/${r.id}" alt="">
+        <div class="rc-meta"><div class="rc-cap">${esc(r.caption || cityName(r.city))}</div>
+        <div class="muted">${r.km !== undefined ? esc(tr("kmAway", { km: r.km })) + " · " : ""}${esc(r.created.slice(11, 16))}</div></div></div>`).join("")}</div>`
+      : `<p class="muted small" style="margin:0">${esc(tr("noReports"))}</p>`;
+    return `<h4>${esc(tr("reports"))}</h4><p class="muted small" style="margin:-6px 0 10px">${esc(tr("reportsNear"))}</p>
+      ${items}<button type="button" class="ghost-btn" id="openReport">${esc(tr("sendReport"))}</button>`;
+  }
+
+  function renderReportsCard() {
+    const el = $("#reportsCard");
+    if (el) el.innerHTML = reportsCardHTML();
+  }
+
   function renderHome() {
     const d = state.data, a = d.air.current, w = (d.weather && d.weather.current) || null;
+    state._wIndex = hourlyIndex(d.weather && d.weather.hourly && d.weather.hourly.time);
     const color = levelColor(a.pm10);
     let html = "";
 
@@ -219,6 +459,7 @@
     html += `<div class="hero"><img id="heroImg" alt="${esc(placeName())}"
       src="/api/scene?${placeQuery()}&lang=${state.lang}&t=${encodeURIComponent(a.time)}"></div>`;
 
+    const adv = state.profile !== "none" ? tv("profileAdvice")[state.profile] : null;
     html += `<div class="card"><h4>${esc(tr("airQuality"))}</h4>
       <div class="aqi">${gaugeSVG(a.pm10)}
         <div><p class="level-name" style="--lc:${color}">${esc(levelName(a.pm10))}</p>
@@ -228,7 +469,11 @@
         <div class="metric"><div class="m-label">${esc(tr("dust"))}</div><div class="m-val">${fmt(a.dust)}<small>µg/m³</small></div></div>
         <div class="metric"><div class="m-label">${esc(tr("aod"))}</div><div class="m-val">${fmt(a.aerosol_optical_depth, 2)}</div></div>
         <div class="metric"><div class="m-label">${esc(tr("humidity"))}</div><div class="m-val">${w ? fmt(w.relative_humidity_2m) : "—"}<small>%</small></div></div>
-      </div></div>`;
+      </div>
+      ${adv ? `<div class="for-you"><b>${tv("profileIcons")[state.profile]} ${esc(tr("forYou"))}:</b> ${esc(adv)}</div>` : ""}</div>`;
+
+    html += riskCard();
+    html += activityCard();
 
     if (w) {
       html += `<div class="card"><h4>${esc(tr("weather"))}</h4>
@@ -246,6 +491,9 @@
     }
 
     html += `<div class="card"><h4>${esc(tr("next24"))}</h4><div class="chart-box"><canvas id="chart24"></canvas></div></div>`;
+    html += cigaretteCard();
+    html += fullAqCard();
+    html += `<div class="card" id="reportsCard">${reportsCardHTML()}</div>`;
     html += `<p class="footer-note">${esc(tr("updated"))}: ${esc(a.time.replace("T", " "))}</p>`;
 
     $("#view-home").innerHTML = html;
@@ -269,7 +517,6 @@
     return i < 0 ? 0 : i;
   }
 
-  // Grafik foniga rangli xavf zonalarini chizuvchi plagin
   const bandsPlugin = {
     id: "bands",
     beforeDatasetsDraw(chart, _args, opts) {
@@ -347,16 +594,18 @@
     });
   }
 
-  // ---------------- Prognoz sahifasi ----------------
+  // ---------------- Prognoz ----------------
   function renderForecast() {
     const d = state.data;
     const daily = d.weather && d.weather.daily;
     const wd = WEEKDAYS_LONG[state.lang];
+    const riskDays = (d.risk && d.risk.days) || [];
     let html = `<div class="days">`;
     d.days.forEach((day) => {
       const dt = new Date(day.date + "T12:00");
       const wi = daily ? daily.time.indexOf(day.date) : -1;
       const w = (k) => (wi >= 0 ? daily[k][wi] : null);
+      const rd = riskDays.find((x) => x.date === day.date);
       html += `<div class="day" style="--lc:${levelColor(day.pm10)}">
         <div class="d-name">${esc(wd[dt.getDay()])}</div>
         <div class="d-date">${day.date.slice(8, 10)}.${day.date.slice(5, 7)}</div>
@@ -364,6 +613,7 @@
         ${wi >= 0 ? `<div class="d-temp">${fmt(w("temperature_2m_max"))}° <span>${fmt(w("temperature_2m_min"))}°</span></div>` : ""}
         <div class="d-pm">PM10 ${fmt(day.pm10)}</div>
         <div class="d-row">${esc(levelName(day.pm10))}</div>
+        ${rd ? `<div class="d-risk" style="--rc:${RISK_COLORS[rd.level]}">🎯 ${esc(tr("riskShort"))} ${rd.score}</div>` : ""}
         ${wi >= 0 ? `<div class="d-row">☔ ${fmt(w("precipitation_sum"), 1)} ${tr("mm")} · ${fmt(w("precipitation_probability_max"))}%</div>
         <div class="d-row">💨 ${fmt(w("wind_speed_10m_max"))}–${fmt(w("wind_gusts_10m_max"))} ${tr("ms")}</div>` : ""}
       </div>`;
@@ -434,40 +684,307 @@
       maxZoom: 18, className: "osm-tiles",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(state.map);
+    state.mapLayers.cities = L.layerGroup().addTo(state.map);
+    state.mapLayers.reports = L.layerGroup().addTo(state.map);
+    state.mapLayers.arrows = L.layerGroup();
+    state.mapLayers.dots = L.layerGroup();
     fitCities();
-    renderMapMarkers();
+    renderCityMarkers();
+    renderReportPins();
     renderLegend();
   }
 
   function fitCities() {
     const pts = state.meta.cities.map((c) => [c.lat, c.lon]);
-    state.map.fitBounds(L.latLngBounds(pts), { padding: [28, 28], paddingBottomRight: [28, 70] });
+    state.map.fitBounds(L.latLngBounds(pts), { padding: [28, 28], paddingTopLeft: [20, state.mapMode === "cloud" ? 70 : 20], paddingBottomRight: [20, 60] });
   }
 
   function renderLegend() {
+    if (state.mapMode === "cloud") {
+      $("#mapLegend").innerHTML = `<b>${esc(tr("cloudLegend"))}</b> 0 <span class="gradient-bar"></span> 300+`;
+      return;
+    }
     const lim = [0, ...state.meta.levels.limits];
     $("#mapLegend").innerHTML = `<b>${esc(tr("legend"))}</b>` + state.meta.levels.colors.map((c, i) =>
-      `<span><i style="background:${c}"></i>${lim[i]}${i < lim.length - 1 ? "–" + lim[i + 1] : "+"}</span>`).join("");
+      `<span><i style="background:${c}"></i>${lim[i]}${i < lim.length - 1 ? "–" + lim[i + 1] : "+"}</span>`).join("") +
+      `<span>📸 ${esc(tr("reportsLayer"))}</span>`;
   }
 
-  function renderMapMarkers() {
+  function renderCityMarkers() {
     if (!state.map) return;
-    state.mapMarkers.forEach((m) => m.remove());
-    state.mapMarkers = [];
+    const g = state.mapLayers.cities;
+    g.clearLayers();
     const ov = state.overview || [];
     state.meta.cities.forEach((c) => {
       const o = ov.find((x) => x.key === c.key) || {};
-      const color = o.pm10 !== undefined && o.pm10 !== null ? levelColor(o.pm10) : "#90a4ae";
+      const has = o.pm10 !== undefined && o.pm10 !== null;
+      const color = has ? levelColor(o.pm10) : "#90a4ae";
       const sel = state.place.key === c.key ? " sel" : "";
-      const icon = L.divIcon({ className: "", html: `<div class="pin${sel}" style="background:${color}">${fmt(o.pm10)}</div>`,
-        iconSize: [0, 0] });
-      const m = L.marker([c.lat, c.lon], { icon }).addTo(state.map);
-      const wx = o.temp !== undefined && o.temp !== null
-        ? `<br>${weatherEmoji(o.code)} ${fmt(o.temp)}° · 💨 ${fmt(o.wind)} ${tr("ms")}` : "";
-      m.bindPopup(`<b>${esc(c.name[state.lang])}</b><br>PM10 ${fmt(o.pm10)} µg/m³ · ${esc(o.pm10 !== undefined && o.pm10 !== null ? levelName(o.pm10) : "—")}${wx}
+      const icon = L.divIcon({ className: "", html: `<div class="pin${sel}" style="background:${color}">${fmt(o.pm10)}</div>`, iconSize: [0, 0] });
+      const wx = o.temp !== undefined && o.temp !== null ? `<br>${weatherEmoji(o.code)} ${fmt(o.temp)}° · 💨 ${fmt(o.wind)} ${tr("ms")}` : "";
+      L.marker([c.lat, c.lon], { icon }).addTo(g).bindPopup(
+        `<b>${esc(c.name[state.lang])}</b><br>PM10 ${fmt(o.pm10)} µg/m³ · ${esc(has ? levelName(o.pm10) : "—")}${wx}
         <button class="popup-btn" type="button" data-key="${c.key}">${esc(tr("select"))}</button>`);
-      state.mapMarkers.push(m);
     });
+  }
+
+  function renderReportPins() {
+    if (!state.map) return;
+    const g = state.mapLayers.reports;
+    g.clearLayers();
+    (state.reports || []).forEach((r) => {
+      const icon = L.divIcon({ className: "", html: '<div class="report-pin">📸</div>', iconSize: [0, 0] });
+      L.marker([r.lat, r.lon], { icon, zIndexOffset: 500 }).addTo(g).bindPopup(
+        `<img src="/api/report_photo/${r.id}" alt=""><b>${esc(cityName(r.city))}</b> · ${esc(r.created.slice(5, 16).replace("T", " "))}
+         ${r.caption ? "<br>" + esc(r.caption) : ""}`);
+    });
+  }
+
+  // ----- Chang buluti (animatsiya) -----
+  function dustRGBA(v) {
+    if (v === null || v === undefined || v < 20) return [0, 0, 0, 0];
+    const stops = [[20, [245, 210, 90, 0.05]], [50, [240, 185, 60, 0.45]], [100, [228, 145, 45, 0.65]],
+      [180, [190, 105, 30, 0.8]], [300, [115, 55, 18, 0.88]]];
+    for (let i = 1; i < stops.length; i++) {
+      if (v <= stops[i][0]) {
+        const [v0, c0] = stops[i - 1], [v1, c1] = stops[i], f = (v - v0) / (v1 - v0);
+        return c0.map((x, k) => x + (c1[k] - x) * f);
+      }
+    }
+    return stops[stops.length - 1][1];
+  }
+
+  function cloudImage(frame) {
+    const g = state.grid, rows = g.lats.length, cols = g.lons.length, vals = g.dust[frame];
+    const small = document.createElement("canvas");
+    small.width = cols; small.height = rows;
+    const sctx = small.getContext("2d"), img = sctx.createImageData(cols, rows);
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        const [r, gg, b, a] = dustRGBA(vals[i * cols + j]);
+        const p = ((rows - 1 - i) * cols + j) * 4;  // shimol tepada
+        img.data[p] = r; img.data[p + 1] = gg; img.data[p + 2] = b; img.data[p + 3] = Math.round(a * 255);
+      }
+    }
+    sctx.putImageData(img, 0, 0);
+    const big = document.createElement("canvas");
+    big.width = cols * 24; big.height = rows * 24;
+    const bctx = big.getContext("2d");
+    bctx.imageSmoothingEnabled = true;
+    bctx.imageSmoothingQuality = "high";
+    bctx.filter = "blur(5px)";
+    bctx.drawImage(small, 0, 0, big.width, big.height);
+    return big.toDataURL("image/png");
+  }
+
+  function arrowSVG() {
+    return '<svg viewBox="0 0 24 24"><path d="M12 2 L18 14 L13 12 L13 22 L11 22 L11 12 L6 14 Z"/></svg>';
+  }
+
+  async function showCloud() {
+    if (!state.grid) {
+      $("#timeLabel").textContent = tr("cloudLoading");
+      try { state.grid = await api("/api/grid"); } catch (e) { console.error(e); toast(tr("error")); return; }
+    }
+    const g = state.grid, half = g.step / 2;
+    const bounds = [[g.lats[0] - half, g.lons[0] - half], [g.lats[g.lats.length - 1] + half, g.lons[g.lons.length - 1] + half]];
+    if (!state.mapLayers.cloud) {
+      state.mapLayers.cloud = L.imageOverlay(cloudImage(0), bounds, { opacity: 0.9, interactive: false });
+    }
+    state.mapLayers.cloud.addTo(state.map);
+    // Shamol strelkalari (har ikkinchi nuqtada)
+    const ag = state.mapLayers.arrows;
+    ag.clearLayers();
+    state._arrows = [];
+    if (g.wind_dir) {
+      g.lats.forEach((la, i) => g.lons.forEach((lo, j) => {
+        if (i % 2 || j % 2) return;
+        const m = L.marker([la, lo], { icon: L.divIcon({ className: "wind-arrow", html: arrowSVG(), iconSize: [18, 18] }), interactive: false });
+        m.addTo(ag);
+        state._arrows.push({ m, k: i * g.lons.length + j });
+      }));
+      ag.addTo(state.map);
+    }
+    const dots = state.mapLayers.dots;
+    dots.clearLayers();
+    state.meta.cities.forEach((c) => L.circleMarker([c.lat, c.lon], { radius: 3, color: "#fff", weight: 1, fillColor: "#263238", fillOpacity: 1 })
+      .bindTooltip(c.name[state.lang], { direction: "top", offset: [0, -4] }).addTo(dots));
+    dots.addTo(state.map);
+    const slider = $("#timeSlider");
+    slider.max = g.times.length - 1;
+    slider.value = state.frame;
+    setFrame(state.frame);
+  }
+
+  function setFrame(f) {
+    const g = state.grid;
+    if (!g) return;
+    state.frame = f;
+    state.mapLayers.cloud.setUrl(cloudImage(f));
+    const t = g.times[f];
+    $("#timeLabel").textContent = WEEKDAYS_SHORT[state.lang][new Date(t.slice(0, 10) + "T12:00").getDay()] + " " + t.slice(11, 16);
+    $("#timeSlider").value = f;
+    if (g.wind_dir) {
+      state._arrows.forEach(({ m, k }) => {
+        const el = m.getElement();
+        const deg = g.wind_dir[f][k], sp = g.wind_speed ? g.wind_speed[f][k] : 5;
+        if (el && deg !== null) {
+          const svg = el.querySelector("svg");
+          svg.style.transform = `rotate(${deg + 180}deg) scale(${clamp(0.7 + (sp || 0) / 12, 0.7, 1.6)})`;
+        }
+      });
+    }
+  }
+
+  function togglePlay(force) {
+    const play = force !== undefined ? force : !state.playing;
+    clearInterval(state.playing);
+    state.playing = null;
+    $("#playBtn").textContent = play ? "❚❚" : "▶";
+    if (!play || !state.grid) return;
+    state.playing = setInterval(() => setFrame((state.frame + 1) % state.grid.times.length), 700);
+  }
+
+  function setMapMode(mode) {
+    state.mapMode = mode;
+    document.querySelectorAll("#mapSeg button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+    $("#timeline").hidden = mode !== "cloud";
+    if (!state.map) return;
+    if (mode === "cloud") {
+      state.map.removeLayer(state.mapLayers.cities);
+      state.map.removeLayer(state.mapLayers.reports);
+      showCloud();
+    } else {
+      togglePlay(false);
+      ["cloud", "arrows", "dots"].forEach((k) => state.mapLayers[k] && state.map.removeLayer(state.mapLayers[k]));
+      state.mapLayers.cities.addTo(state.map);
+      state.mapLayers.reports.addTo(state.map);
+    }
+    renderLegend();
+  }
+
+  // ---------------- Statistika ----------------
+  async function loadHistory() {
+    const q = placeQuery();
+    if (state.history && state.historyFor === q) return renderStats();
+    state.history = null;
+    renderStats();
+    try {
+      const r = await api("/api/history?" + q);
+      state.history = r.days;
+      state.historyFor = q;
+    } catch (e) { console.error(e); state.history = []; }
+    renderStats();
+  }
+
+  function rankingHTML() {
+    const ov = (state.overview || []).filter((o) => o.pm10 !== null && o.pm10 !== undefined).slice().sort((a, b) => a.pm10 - b.pm10);
+    if (!ov.length) return `<div class="skeleton" style="height:200px"></div>`;
+    const max = Math.max(...ov.map((o) => o.pm10), 100);
+    const medal = (i) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i === ov.length - 1 ? "🔥" : i + 1);
+    return ov.map((o, i) => `<div class="rank${o.key === state.place.key ? " me" : ""}">
+      <span class="r-pos">${medal(i)}</span><span class="r-name">${esc(cityName(o.key))}</span>
+      <span class="r-bar"><i style="width:${(100 * o.pm10 / max).toFixed(0)}%;background:${levelColor(o.pm10)}"></i></span>
+      <b>${fmt(o.pm10)}</b></div>`).join("");
+  }
+
+  function historyHTML() {
+    if (state.history === null) return `<div class="skeleton" style="height:260px"></div>`;
+    const days = state.history.slice(-state.historyDays);
+    if (!days.length) return `<p class="muted">${esc(tr("error"))}</p>`;
+    const avg = days.reduce((a, d) => a + d.mean, 0) / days.length;
+    const dusty = days.filter((d) => d.mean > 100).length;
+    const who = days.filter((d) => d.mean > 45).length;
+    const worst = days.reduce((a, d) => (d.max > a.max ? d : a), days[0]);
+    // Taqvim: dushanbadan boshlanadigan haftalar
+    const firstDow = (new Date(days[0].date + "T12:00").getDay() + 6) % 7;
+    let cells = '<i class="empty"></i>'.repeat(firstDow);
+    cells += days.map((d) => `<i title="${d.date}: ${fmt(d.mean)}" data-day="${d.date}" data-v="${fmt(d.mean)}" style="background:${levelColor(d.mean)}"></i>`).join("");
+    const legend = state.meta.levels.colors.map((c) => `<i style="background:${c}"></i>`).join("");
+    return `<div class="seg two" id="histSeg">
+        <button type="button" data-days="30" class="${state.historyDays === 30 ? "on" : ""}">${esc(tr("days30"))}</button>
+        <button type="button" data-days="90" class="${state.historyDays === 90 ? "on" : ""}">${esc(tr("days90"))}</button></div>
+      <p class="small" style="margin:12px 0 0">${esc(tr("historySummary", { n: days.length, d: dusty }))}</p>
+      <div class="tiles">
+        <div class="tile"><div class="t-val" style="color:${levelColor(avg)}">${fmt(avg)}</div><div class="t-label">${esc(tr("avgPm"))}</div></div>
+        <div class="tile"><div class="t-val">${dusty}</div><div class="t-label">${esc(tr("dustyDays"))}<br>${esc(tr("dustyDaysDesc"))}</div></div>
+        <div class="tile"><div class="t-val">${who}</div><div class="t-label">${esc(tr("whoDays"))}<br>${esc(tr("whoDaysDesc"))}</div></div>
+        <div class="tile"><div class="t-val" style="color:${levelColor(worst.max)}">${fmt(worst.max)}</div><div class="t-label">${esc(tr("worstDay"))}<br>${esc(shortDate(worst.date))}</div></div>
+      </div>
+      <div class="muted small">${esc(tr("calendar"))}</div>
+      <div class="calendar" id="calendar">${cells}</div>
+      <div class="cal-legend">${esc(tr("less"))} ${legend} ${esc(tr("more"))}</div>
+      <div class="chart-box tall" style="margin-top:12px"><canvas id="chartHist"></canvas></div>`;
+  }
+
+  function drawHistoryChart() {
+    if (!state.history || !state.history.length) return;
+    const days = state.history.slice(-state.historyDays);
+    makeChart("chartHist", {
+      type: "bar",
+      data: { labels: days.map((d) => shortDate(d.date)), datasets: [
+        { label: tr("dailyMean"), data: days.map((d) => d.mean), backgroundColor: days.map((d) => levelColor(d.mean)), borderRadius: 3 },
+      ] },
+      options: baseOpts({
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+                  y: { beginAtZero: true, grid: { color: "rgba(127,127,127,.12)" } } },
+      }),
+      plugins: [{
+        id: "who",
+        afterDatasetsDraw(chart) {
+          const { ctx, chartArea: ca, scales: { y } } = chart;
+          const py = y.getPixelForValue(45);
+          if (py < ca.top || py > ca.bottom) return;
+          ctx.save(); ctx.strokeStyle = "#e53935"; ctx.setLineDash([5, 4]);
+          ctx.beginPath(); ctx.moveTo(ca.left, py); ctx.lineTo(ca.right, py); ctx.stroke();
+          ctx.fillStyle = "#e53935"; ctx.font = "11px " + Chart.defaults.font.family;
+          ctx.fillText(tr("whoLine"), ca.left + 4, py - 4); ctx.restore();
+        },
+      }],
+    });
+  }
+
+  // Orol dengizi: sxematik suv havzalari (har yil uchun)
+  const ARAL = {
+    1960: [{ cx: 150, cy: 120, rx: 105, ry: 92 }],
+    1980: [{ cx: 150, cy: 125, rx: 88, ry: 80 }],
+    1989: [{ cx: 130, cy: 52, rx: 42, ry: 24 }, { cx: 160, cy: 145, rx: 68, ry: 62 }],
+    2005: [{ cx: 128, cy: 50, rx: 40, ry: 23 }, { cx: 118, cy: 150, rx: 18, ry: 55 }, { cx: 178, cy: 150, rx: 38, ry: 46 }],
+    2014: [{ cx: 128, cy: 50, rx: 41, ry: 23 }, { cx: 116, cy: 152, rx: 13, ry: 50 }],
+    2024: [{ cx: 128, cy: 50, rx: 41, ry: 23 }, { cx: 114, cy: 150, rx: 10, ry: 44 }],
+  };
+
+  function aralHTML() {
+    const y = state.aralYear, shapes = ARAL[y];
+    const water = shapes.map((s) => `<ellipse class="water" cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}" fill="#3a8fd6" opacity=".85"/>`).join("");
+    let saxaul = "";
+    if (y >= 2014) {
+      for (let i = 0; i < 26; i++) {
+        const a = i * 2.4, r = 40 + (i * 37) % 55;
+        saxaul += `<circle cx="${(175 + Math.cos(a) * r * 0.55).toFixed(0)}" cy="${(150 + Math.sin(a) * r * 0.6).toFixed(0)}" r="3" fill="#5d8a3a" opacity=".8"/>`;
+      }
+    }
+    const years = Object.keys(ARAL).map((k) => `<button type="button" data-year="${k}" class="${+k === y ? "on" : ""}">${k === "2024" ? "2020+" : k}</button>`).join("");
+    return `<h4>${esc(tr("aralTitle"))}</h4><p class="small muted" style="margin:0">${esc(tr("aralIntro"))}</p>
+      <svg class="aral-svg" viewBox="0 0 300 240" role="img" aria-label="Aral">
+        <ellipse cx="150" cy="120" rx="105" ry="92" fill="none" stroke="#7a5b2e" stroke-width="1.5" stroke-dasharray="5 4" opacity=".6"/>
+        ${water}${saxaul}
+        <text x="150" y="232" text-anchor="middle" font-size="10" fill="#7a5b2e">${esc(tr("aralSchema"))} · ${y === 2024 ? "2020+" : y}</text>
+        <text x="245" y="215" font-size="10" fill="#7a5b2e">Mo'ynoq ●</text>
+      </svg>
+      <div class="years" id="aralYears">${years}</div>
+      <p class="aral-text">${esc(tv("aral")[y])}</p>`;
+  }
+
+  function renderStats() {
+    $("#view-stats").innerHTML =
+      `<div class="card"><h4>${esc(tr("ranking"))}</h4>${rankingHTML()}</div>
+       <div class="card"><h4>${esc(tr("history"))} · ${esc(placeName())}</h4>${historyHTML()}</div>
+       <div class="card" id="aralCard">${aralHTML()}</div>
+       <p class="footer-note">${esc(tr("source"))}</p>`;
+    drawHistoryChart();
   }
 
   // ---------------- Sozlamalar ----------------
@@ -475,9 +992,14 @@
     const s = state.settings;
     const disabled = inTelegram ? "" : "disabled";
     const tgHtml = (txt) => esc(txt).replace(/&lt;(\/?)(b|i)&gt;/g, "<$1$2>").replace(/\n/g, "<br>");
+    const names = tv("profiles"), icons = tv("profileIcons");
     let html = `<div class="card"><h4>${esc(tr("language"))}</h4><div class="seg">` +
       LANGS.map((l) => `<button type="button" data-lang="${l}" class="${l === state.lang ? "on" : ""}">${{ uz: "O'zbekcha", ru: "Русский", en: "English" }[l]}</button>`).join("") +
       `</div></div>`;
+    html += `<div class="card"><h4>${esc(tr("profile"))}</h4><p class="muted small" style="margin:-4px 0 10px">${esc(tr("profileDesc"))}</p>
+      <div class="profiles">${PROFILES.map((p) => `<button type="button" class="profile-opt${p === state.profile ? " on" : ""}" data-profile="${p}">
+        <span>${icons[p]}</span><span>${esc(names[p])}</span></button>`).join("")}</div>
+      ${SENSITIVE.includes(state.profile) ? `<p class="muted small" style="margin:10px 0 0">${esc(tr("profileAlertNote", { n: state.meta.alert.sensitive_pm10 }))}</p>` : ""}</div>`;
     html += `<div class="card"><h4>${esc(tr("notifications"))}</h4>
       <div class="toggle-row"><div><div class="t-title">${esc(tr("alerts"))}</div><div class="muted small">${esc(tr("alertsDesc"))}</div></div>
         <label class="switch"><input type="checkbox" id="tAlerts" ${s && s.alerts ? "checked" : ""} ${disabled}><span></span></label></div>
@@ -499,7 +1021,89 @@
       if (!silent) toast(tr("saved"));
     } catch (e) {
       console.error(e);
+      if (!silent) toast(tr("error"));
+    }
+  }
+
+  function setProfile(p) {
+    if (!PROFILES.includes(p)) return;
+    state.profile = p;
+    store.set("profile", p);
+    haptic();
+    renderSettings();
+    if (state.data) renderHome();
+    saveSettings({ profile: p });
+    if (!inTelegram) toast(tr("saved"));
+  }
+
+  // ---------------- Bo'ron rasmini yuborish ----------------
+  function openReportSheet() {
+    if (!inTelegram) return toast(tr("reportOnlyTg"));
+    state.photoBlob = null;
+    $("#photoPreview").hidden = true;
+    $("#photoPickText").hidden = false;
+    $("#captionInput").value = "";
+    $("#sendReportBtn").disabled = true;
+    $("#reportPlace").textContent = tr("reportPlace", { place: placeName() });
+    openSheet("reportSheet", true);
+  }
+
+  // Rasmni kichraytirib JPEG qiladi (tezroq yuklanishi uchun)
+  function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1600, k = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error("blob"))), "image/jpeg", 0.85);
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async function onPhotoPicked(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      state.photoBlob = await compressImage(file);
+      const prev = $("#photoPreview");
+      prev.src = URL.createObjectURL(state.photoBlob);
+      prev.hidden = false;
+      $("#photoPickText").hidden = true;
+      $("#sendReportBtn").disabled = false;
+    } catch (err) {
+      console.error(err);
       toast(tr("error"));
+    }
+  }
+
+  async function sendReport() {
+    if (!state.photoBlob) return;
+    const btn = $("#sendReportBtn");
+    btn.disabled = true;
+    btn.textContent = tr("sending");
+    const fd = new FormData();
+    fd.append("photo", state.photoBlob, "storm.jpg");
+    fd.append("caption", $("#captionInput").value.trim());
+    const p = state.place;
+    if (p.key) fd.append("key", p.key); else { fd.append("lat", p.lat); fd.append("lon", p.lon); }
+    try {
+      const r = await api("/api/report", { method: "POST", body: fd });
+      haptic("success");
+      toast(r.status === "pending" ? tr("reportPending") : tr("reportSaved"));
+      openSheet("reportSheet", false);
+      loadReports();
+    } catch (e) {
+      console.error(e);
+      haptic("error");
+      toast(e.status === 429 ? tr("reportLimit") : tr("error"));
+    } finally {
+      btn.textContent = tr("send");
+      btn.disabled = false;
     }
   }
 
@@ -515,18 +1119,20 @@
     }).join("");
   }
 
-  function openSheet(show) {
-    $("#citySheet").classList.toggle("show", show);
+  function openSheet(id, show) {
+    document.querySelectorAll(".sheet").forEach((s) => { if (s.id !== id || !show) s.classList.remove("show"); });
+    if (show) $("#" + id).classList.add("show");
     $("#sheetBackdrop").classList.toggle("show", show);
-    if (show) renderCityList();
+    if (show && id === "citySheet") renderCityList();
   }
 
   function selectPlace(place) {
     state.place = place;
     store.set("place", place);
     haptic("light");
-    openSheet(false);
+    openSheet("citySheet", false);
     if (state.map) state.map.closePopup();
+    state.history = null;
     showView("home");
     loadData("skeleton");
     if (place.key) saveSettings({ city: place.key });
@@ -536,7 +1142,7 @@
   function useLocation() {
     const done = (lat, lon) => selectPlace({ lat, lon });
     const fail = () => toast(tr("locDenied"));
-    try {  // Telegram'ning o'z joylashuv xizmati (yangi versiyalarda)
+    try {
       const lm = tg && tg.LocationManager;
       if (lm && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0")) {
         lm.init(() => {
@@ -554,13 +1160,15 @@
     }
   }
 
-  // ---------------- Bo'limlar orasida o'tish ----------------
+  // ---------------- Bo'limlar ----------------
   function showView(view) {
     state.view = view;
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === view));
     window.scrollTo({ top: 0 });
+    if (view !== "map") togglePlay(false);
     if (view === "forecast" && state.data) drawForecastCharts();
+    if (view === "stats") loadHistory();
     if (view === "map") {
       initMap();
       setTimeout(() => { if (state.map) { state.map.invalidateSize(); fitCities(); } }, 60);
@@ -574,26 +1182,43 @@
     haptic();
     if (state.data) renderAll(); else applyI18n();
     renderCityList();
-    if (state.map) { renderMapMarkers(); renderLegend(); }
+    if (state.map) { renderCityMarkers(); renderReportPins(); renderLegend(); if (state.mapMode === "cloud") setFrame(state.frame); }
     saveSettings({ lang });
   }
 
   // ---------------- Hodisalar ----------------
   function bindEvents() {
     document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => { haptic(); showView(t.dataset.view); }));
-    $("#cityBtn").addEventListener("click", () => { haptic(); openSheet(true); });
-    $("#sheetBackdrop").addEventListener("click", () => openSheet(false));
-    $("#refreshBtn").addEventListener("click", () => { haptic("light"); loadData(); });
+    $("#cityBtn").addEventListener("click", () => { haptic(); openSheet("citySheet", true); });
+    $("#sheetBackdrop").addEventListener("click", () => openSheet("", false));
+    $("#refreshBtn").addEventListener("click", () => { haptic("light"); state.history = null; loadData(); });
     $("#locBtn").addEventListener("click", useLocation);
     $("#cityList").addEventListener("click", (e) => {
       const b = e.target.closest(".city-item");
       if (b) selectPlace({ key: b.dataset.key });
     });
+    $("#mapSeg").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-mode]");
+      if (b) { haptic(); setMapMode(b.dataset.mode); }
+    });
+    $("#playBtn").addEventListener("click", () => { haptic(); togglePlay(); });
+    $("#timeSlider").addEventListener("input", (e) => { togglePlay(false); setFrame(+e.target.value); });
+    $("#photoInput").addEventListener("change", onPhotoPicked);
+    $("#sendReportBtn").addEventListener("click", sendReport);
     document.addEventListener("click", (e) => {
       const p = e.target.closest(".popup-btn");
       if (p) selectPlace({ key: p.dataset.key });
       const l = e.target.closest("[data-lang]");
       if (l) setLang(l.dataset.lang);
+      const pr = e.target.closest("[data-profile]");
+      if (pr) setProfile(pr.dataset.profile);
+      if (e.target.closest("#openReport")) { haptic(); openReportSheet(); }
+      const hd = e.target.closest("#histSeg button[data-days]");
+      if (hd) { haptic(); state.historyDays = +hd.dataset.days; renderStats(); }
+      const y = e.target.closest("#aralYears button[data-year]");
+      if (y) { haptic(); state.aralYear = +y.dataset.year; $("#aralCard").innerHTML = aralHTML(); }
+      const cell = e.target.closest("#calendar i[data-day]");
+      if (cell) toast(shortDate(cell.dataset.day) + " · PM10 " + cell.dataset.v + " µg/m³");
     });
     document.addEventListener("change", (e) => {
       if (e.target.id === "tAlerts") { haptic(); saveSettings({ alerts: e.target.checked }); }
@@ -609,6 +1234,7 @@
     const tgLang = tg && tg.initDataUnsafe && tg.initDataUnsafe.user && (tg.initDataUnsafe.user.language_code || "").slice(0, 2);
     state.lang = store.get("lang", LANGS.includes(tgLang) ? tgLang : "uz");
     state.place = store.get("place", { key: "toshkent" });
+    state.profile = store.get("profile", "none");
     applyI18n();
     bindEvents();
     renderSkeleton();
@@ -618,17 +1244,21 @@
       console.error(e);
       return renderError();
     }
+    applyI18n();
     if (inTelegram) {
       try {
         state.settings = await api("/api/me");
         if (state.settings.lang && !store.get("lang", null)) state.lang = state.settings.lang;
-        if (state.settings.city && state.settings.city in Object.fromEntries(state.meta.cities.map((c) => [c.key, 1]))) {
+        if (state.settings.profile && PROFILES.includes(state.settings.profile)) state.profile = state.settings.profile;
+        const keys = state.meta.cities.map((c) => c.key);
+        if (state.settings.city && keys.includes(state.settings.city)) {
           state.place = { key: state.settings.city };
         } else if (state.settings.city === "loc" && state.settings.lat !== null) {
           state.place = { lat: state.settings.lat, lon: state.settings.lon };
         } else {  // birinchi kirish: bildirishnomalar ishlashi uchun joyni serverga saqlaymiz
           const p = state.place;
-          saveSettings(p.key ? { city: p.key, lang: state.lang } : { city: "loc", lat: p.lat, lon: p.lon, lang: state.lang }, true);
+          saveSettings(p.key ? { city: p.key, lang: state.lang, profile: state.profile }
+            : { city: "loc", lat: p.lat, lon: p.lon, lang: state.lang, profile: state.profile }, true);
         }
       } catch (e) { console.warn("settings", e); }
     }

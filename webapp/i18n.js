@@ -1,7 +1,7 @@
 // Ilova interfeysi matnlari: o'zbekcha (asosiy), ruscha, inglizcha
 window.I18N = {
   uz: {
-    tabHome: "Asosiy", tabForecast: "Prognoz", tabMap: "Xarita", tabSettings: "Sozlamalar",
+    tabHome: "Asosiy", tabForecast: "Prognoz", tabMap: "Xarita", tabStats: "Statistika", tabSettings: "Sozlamalar",
     airQuality: "Havo sifati", pm25: "PM2.5", dust: "Chang", aod: "Aerozol (AOD)",
     humidity: "Namlik", weather: "Ob-havo", feels: "His qilinadi", wind: "Shamol",
     gusts: "Shiddati", precip: "Yog'in", direction: "Yo'nalish", next24: "Keyingi 24 soat (PM10)",
@@ -20,11 +20,84 @@ window.I18N = {
     updated: "Yangilandi", error: "Ma'lumot yuklanmadi. Internetni tekshirib, qayta urinib ko'ring.",
     retry: "Qayta urinish", loading: "Yuklanmoqda…", legend: "PM10, µg/m³", select: "Tanlash",
     saved: "Saqlandi ✅", max: "maks", locDenied: "Joylashuvni aniqlab bo'lmadi",
-    peakAt: "eng yuqori: soat {hour}", ms: "m/s", mm: "mm", now: "hozir",
-    appTitle: "Chang Monitor", version: "Ilova versiyasi",
+    ms: "m/s", mm: "mm", now: "hozir",
+
+    // Bo'ron xavfi
+    risk: "🎯 Bo'ron xavfi", riskLevels: ["Past", "O'rtacha", "Yuqori", "Juda yuqori"],
+    riskWind: "Shamol", riskDry: "Quruqlik", riskDust: "Chang", riskRain: "Yog'in",
+    riskRainNone: "yo'q", riskRainSome: "kamaytiradi",
+    riskNote: "Shamol shiddati, tuproq quruqligi, namlik, yog'in va chang prognozi asosidagi taxminiy indeks (0–100).",
+    riskShort: "Xavf",
+
+    // Faollik
+    activities: "⏰ Eng toza soatlar", bestWindow: "Tashqariga chiqish uchun eng yaxshi vaqt",
+    actRun: "Yugurish", actWalk: "Sayr", actChild: "Bola bilan sayr", actWindow: "Deraza ochish",
+    stOk: "Mumkin", stCaution: "Ehtiyot bo'ling", stNo: "Tavsiya etilmaydi",
+    bestAt: "Qulay vaqt: {range}", noGood: "24 soatda qulay vaqt yo'q",
+    reasonRain: "yomg'ir", reasonHeat: "issiq", reasonWind: "kuchli shamol",
+    nowLabel: "Hozir",
+
+    // Sigaret
+    cigTitle: "🚬 Bugun qancha chang yutdingiz?", cigText: "Bugungi havo ≈ {n} dona sigaretga teng",
+    cigNote: "Berkeley Earth hisobi: 24 soat davomida 22 µg/m³ PM2.5 bilan nafas olish ≈ 1 dona sigaret. Taxminiy ko'rsatkich.",
+
+    // To'liq havo sifati
+    fullAq: "🧪 To'liq havo sifati", usAqi: "AQI (AQSH)", ozone: "Ozon (O₃)", no2: "NO₂",
+    co: "CO", so2: "SO₂", uv: "UV indeksi",
+    aqiLevels: ["Yaxshi", "O'rtacha", "Sezgirlar uchun zararli", "Zararli", "Juda zararli", "Xavfli"],
+    uvLevels: ["Past", "O'rtacha", "Yuqori", "Juda yuqori", "Haddan tashqari"],
+
+    // Profil
+    profile: "👤 Shaxsiy profil", profileDesc: "Maslahatlar, faollik va ogohlantirishlar siz uchun moslashadi",
+    profiles: { none: "Oddiy", sensitive: "Astma / allergiya", pregnant: "Homilador", elderly: "Keksa (65+)",
+      child: "Bolali ota-ona", athlete: "Sportchi" },
+    profileIcons: { none: "🙂", sensitive: "🫁", pregnant: "🤰", elderly: "👴", child: "👶", athlete: "🏃" },
+    profileAdvice: {
+      sensitive: "Astma yoki allergiyangiz bor: PM10 50 dan oshsa ingalyatorni yoningizda olib yuring, 100 dan oshsa tashqarida kam bo'ling.",
+      pregnant: "Homiladorlikda chang ayniqsa zararli: PM10 100 dan oshsa tashqarida kam bo'ling va N95 niqob taqing.",
+      elderly: "Yurak va o'pkangizni asrang: chang ko'tarilgan kunlari sayrni eng toza soatlarga ko'chiring.",
+      child: "Bolalar changga sezgir: PM10 50 dan oshsa ochiq havodagi o'yinlarni qisqartiring.",
+      athlete: "Mashg'ulot paytida nafas tezlashadi: chang yuqori bo'lsa, mashqni yopiq zalda qiling.",
+    },
+    profileAlertNote: "Sezgir profilda bot PM10 {n} µg/m³ dan oshganda ham ogohlantiradi.",
+    forYou: "Siz uchun",
+
+    // Statistika
+    ranking: "🏆 Shaharlar reytingi (hozir)", rankClean: "Eng toza", rankDusty: "Eng changli",
+    history: "📅 Chang tarixi", days30: "30 kun", days90: "90 kun",
+    avgPm: "O'rtacha PM10", dustyDays: "Changli kunlar", dustyDaysDesc: "o'rtacha PM10 > 100",
+    whoDays: "JSST me'yoridan oshgan", whoDaysDesc: "o'rtacha PM10 > 45", worstDay: "Eng changli kun",
+    calendar: "Taqvim (kunlik o'rtacha PM10)", dailyMean: "Kunlik o'rtacha PM10", whoLine: "JSST me'yori (45)",
+    historySummary: "So'nggi {n} kunda {d} ta changli kun bo'ldi.", less: "Kam", more: "Ko'p",
+
+    // Bo'ron rasmlari
+    reports: "📸 Bo'ron rasmlari", reportsNear: "Yaqin atrofda, so'nggi 48 soat",
+    noReports: "Hozircha yaqin atrofda bo'ron rasmlari yo'q.", sendReport: "📸 Rasm yuborish",
+    reportTitle: "Bo'ron rasmini yuborish", reportHint: "Chang yoki qum bo'ronini ko'rsangiz, rasmini yuboring. Boshqalarni ogohlantiramiz!",
+    choosePhoto: "📷 Rasm tanlash yoki suratga olish", captionPh: "Izoh (masalan: ko'rinish 100 m)", send: "Yuborish",
+    sending: "Yuborilmoqda…", reportPending: "Rahmat! Rasm tekshiruvga yuborildi. 🙏", reportSaved: "Rahmat! Rasm qabul qilindi. 🙏",
+    reportLimit: "Bir kunda ko'pi bilan 5 ta rasm yuborish mumkin", reportOnlyTg: "Rasm yuborish faqat Telegram ichida ishlaydi",
+    reportPlace: "Joy: {place}", kmAway: "{km} km", reportsLayer: "Bo'ron rasmlari",
+
+    // Xarita
+    mapCities: "🏙 Shaharlar", mapCloud: "🌪 Chang buluti", cloudLegend: "Chang, µg/m³",
+    cloudNote: "3 kunlik prognoz · ▶ tugmasini bosing", cloudLoading: "Chang xaritasi yuklanmoqda…",
+
+    // Orol
+    aralTitle: "🌊 Orol dengizi fojiasi",
+    aralIntro: "Chang bo'ronlarining asosiy manbalaridan biri: qurigan Orol dengizi tubi (Orolqum cho'li). Yillarni tanlang:",
+    aralSchema: "Sxematik tasvir",
+    aral: {
+      1960: "Orol dengizi dunyodagi eng katta ko'llardan biri edi (taxminan 68 000 km²). Baliqchilik gullab-yashnagan, Mo'ynoq port shahri bo'lgan.",
+      1980: "Amudaryo va Sirdaryo suvining katta qismi paxta dalalariga burildi. Dengiz tez sayozlasha va sho'rlasha boshladi.",
+      1989: "Dengiz ikkiga bo'lindi: Kichik (Shimoliy) va Katta (Janubiy) Orol. Qirg'oq Mo'ynoqdan o'nlab km uzoqlashdi.",
+      2005: "Qozog'istonda Ko'karal to'g'oni qurildi va Kichik Orol qisman tiklana boshladi. Katta Orol esa qisqarishda davom etdi.",
+      2014: "Katta Orolning sharqiy qismi birinchi marta butunlay qurib qoldi. O'rnida tuzli Orolqum cho'li kengaydi.",
+      2024: "Orolqumdan ko'tarilgan tuz va chang yuzlab km ga yetadi. O'zbekiston qurigan tubda saksovul o'rmonlarini barpo etib, changni kamaytirishga harakat qilmoqda.",
+    },
   },
   ru: {
-    tabHome: "Главная", tabForecast: "Прогноз", tabMap: "Карта", tabSettings: "Настройки",
+    tabHome: "Главная", tabForecast: "Прогноз", tabMap: "Карта", tabStats: "Статистика", tabSettings: "Настройки",
     airQuality: "Качество воздуха", pm25: "PM2.5", dust: "Пыль", aod: "Аэрозоль (AOD)",
     humidity: "Влажность", weather: "Погода", feels: "Ощущается", wind: "Ветер",
     gusts: "Порывы", precip: "Осадки", direction: "Направление", next24: "Ближайшие 24 часа (PM10)",
@@ -43,11 +116,75 @@ window.I18N = {
     updated: "Обновлено", error: "Не удалось загрузить данные. Проверьте интернет и попробуйте снова.",
     retry: "Повторить", loading: "Загрузка…", legend: "PM10, µg/m³", select: "Выбрать",
     saved: "Сохранено ✅", max: "макс", locDenied: "Не удалось определить местоположение",
-    peakAt: "пик: в {hour}", ms: "м/с", mm: "мм", now: "сейчас",
-    appTitle: "Chang Monitor", version: "Версия приложения",
+    ms: "м/с", mm: "мм", now: "сейчас",
+
+    risk: "🎯 Риск пыльной бури", riskLevels: ["Низкий", "Умеренный", "Высокий", "Очень высокий"],
+    riskWind: "Ветер", riskDry: "Сухость", riskDust: "Пыль", riskRain: "Осадки",
+    riskRainNone: "нет", riskRainSome: "снижают",
+    riskNote: "Примерный индекс (0–100) на основе порывов ветра, сухости почвы, влажности, осадков и прогноза пыли.",
+    riskShort: "Риск",
+
+    activities: "⏰ Самые чистые часы", bestWindow: "Лучшее время для прогулки",
+    actRun: "Бег", actWalk: "Прогулка", actChild: "Прогулка с ребёнком", actWindow: "Проветривание",
+    stOk: "Можно", stCaution: "Осторожно", stNo: "Не рекомендуется",
+    bestAt: "Удобно: {range}", noGood: "Нет удобного времени в ближайшие 24 ч",
+    reasonRain: "дождь", reasonHeat: "жара", reasonWind: "сильный ветер",
+    nowLabel: "Сейчас",
+
+    cigTitle: "🚬 Сколько пыли вы вдохнули сегодня?", cigText: "Сегодняшний воздух ≈ {n} сигареты",
+    cigNote: "Расчёт Berkeley Earth: 24 часа дыхания воздухом с PM2.5 22 µg/m³ ≈ 1 сигарета. Примерная оценка.",
+
+    fullAq: "🧪 Полное качество воздуха", usAqi: "AQI (США)", ozone: "Озон (O₃)", no2: "NO₂",
+    co: "CO", so2: "SO₂", uv: "УФ-индекс",
+    aqiLevels: ["Хорошо", "Умеренно", "Вредно для чувствительных", "Вредно", "Очень вредно", "Опасно"],
+    uvLevels: ["Низкий", "Умеренный", "Высокий", "Очень высокий", "Экстремальный"],
+
+    profile: "👤 Личный профиль", profileDesc: "Советы, активности и предупреждения подстраиваются под вас",
+    profiles: { none: "Обычный", sensitive: "Астма / аллергия", pregnant: "Беременность", elderly: "Пожилой (65+)",
+      child: "Родитель с ребёнком", athlete: "Спортсмен" },
+    profileIcons: { none: "🙂", sensitive: "🫁", pregnant: "🤰", elderly: "👴", child: "👶", athlete: "🏃" },
+    profileAdvice: {
+      sensitive: "У вас астма или аллергия: при PM10 выше 50 держите ингалятор при себе, выше 100 сократите время на улице.",
+      pregnant: "Во время беременности пыль особенно вредна: при PM10 выше 100 меньше бывайте на улице и носите маску N95.",
+      elderly: "Берегите сердце и лёгкие: в пыльные дни переносите прогулки на самые чистые часы.",
+      child: "Дети чувствительны к пыли: при PM10 выше 50 сократите игры на улице.",
+      athlete: "Во время тренировки дыхание учащается: при высокой пыли тренируйтесь в зале.",
+    },
+    profileAlertNote: "В чувствительном профиле бот предупреждает уже при PM10 от {n} µg/m³.",
+    forYou: "Для вас",
+
+    ranking: "🏆 Рейтинг городов (сейчас)", rankClean: "Самый чистый", rankDusty: "Самый пыльный",
+    history: "📅 История пыли", days30: "30 дней", days90: "90 дней",
+    avgPm: "Средний PM10", dustyDays: "Пыльные дни", dustyDaysDesc: "средний PM10 > 100",
+    whoDays: "Выше нормы ВОЗ", whoDaysDesc: "средний PM10 > 45", worstDay: "Самый пыльный день",
+    calendar: "Календарь (средний PM10 за день)", dailyMean: "Средний PM10 за день", whoLine: "Норма ВОЗ (45)",
+    historySummary: "За последние {n} дней было {d} пыльных дней.", less: "Меньше", more: "Больше",
+
+    reports: "📸 Фото пыльных бурь", reportsNear: "Поблизости, за последние 48 часов",
+    noReports: "Пока нет фото бурь поблизости.", sendReport: "📸 Отправить фото",
+    reportTitle: "Отправить фото бури", reportHint: "Видите пыльную или песчаную бурю? Пришлите фото, и мы предупредим других!",
+    choosePhoto: "📷 Выбрать или сделать фото", captionPh: "Подпись (например: видимость 100 м)", send: "Отправить",
+    sending: "Отправка…", reportPending: "Спасибо! Фото отправлено на проверку. 🙏", reportSaved: "Спасибо! Фото принято. 🙏",
+    reportLimit: "Можно отправить не больше 5 фото в день", reportOnlyTg: "Отправка фото работает только в Telegram",
+    reportPlace: "Место: {place}", kmAway: "{km} км", reportsLayer: "Фото бурь",
+
+    mapCities: "🏙 Города", mapCloud: "🌪 Облако пыли", cloudLegend: "Пыль, µg/m³",
+    cloudNote: "Прогноз на 3 дня · нажмите ▶", cloudLoading: "Загрузка карты пыли…",
+
+    aralTitle: "🌊 Трагедия Аральского моря",
+    aralIntro: "Один из главных источников пыльных бурь: высохшее дно Арала (пустыня Аралкум). Выберите год:",
+    aralSchema: "Схематичное изображение",
+    aral: {
+      1960: "Аральское море было одним из крупнейших озёр мира (около 68 000 км²). Процветало рыболовство, Муйнак был портовым городом.",
+      1980: "Большую часть воды Амударьи и Сырдарьи направили на хлопковые поля. Море стало быстро мелеть и засоляться.",
+      1989: "Море разделилось на Малый (Северный) и Большой (Южный) Арал. Берег отступил от Муйнака на десятки км.",
+      2005: "В Казахстане построили Кокаральскую плотину, и Малый Арал начал частично восстанавливаться. Большой Арал продолжил сокращаться.",
+      2014: "Восточная часть Большого Арала впервые полностью высохла. На её месте расширилась солёная пустыня Аралкум.",
+      2024: "Соль и пыль из Аралкума разносятся на сотни километров. Узбекистан высаживает саксаул на высохшем дне, чтобы уменьшить пыль.",
+    },
   },
   en: {
-    tabHome: "Home", tabForecast: "Forecast", tabMap: "Map", tabSettings: "Settings",
+    tabHome: "Home", tabForecast: "Forecast", tabMap: "Map", tabStats: "Stats", tabSettings: "Settings",
     airQuality: "Air quality", pm25: "PM2.5", dust: "Dust", aod: "Aerosol (AOD)",
     humidity: "Humidity", weather: "Weather", feels: "Feels like", wind: "Wind",
     gusts: "Gusts", precip: "Precipitation", direction: "Direction", next24: "Next 24 hours (PM10)",
@@ -66,8 +203,72 @@ window.I18N = {
     updated: "Updated", error: "Couldn't load data. Check your connection and try again.",
     retry: "Try again", loading: "Loading…", legend: "PM10, µg/m³", select: "Select",
     saved: "Saved ✅", max: "max", locDenied: "Couldn't get your location",
-    peakAt: "peak at {hour}", ms: "m/s", mm: "mm", now: "now",
-    appTitle: "Chang Monitor", version: "App version",
+    ms: "m/s", mm: "mm", now: "now",
+
+    risk: "🎯 Dust storm risk", riskLevels: ["Low", "Moderate", "High", "Very high"],
+    riskWind: "Wind", riskDry: "Dryness", riskDust: "Dust", riskRain: "Rain",
+    riskRainNone: "none", riskRainSome: "lowers it",
+    riskNote: "An estimated index (0–100) based on wind gusts, soil dryness, humidity, rain and the dust forecast.",
+    riskShort: "Risk",
+
+    activities: "⏰ Cleanest hours", bestWindow: "Best time to go outside",
+    actRun: "Running", actWalk: "Walking", actChild: "Walk with a child", actWindow: "Airing the home",
+    stOk: "OK", stCaution: "Take care", stNo: "Not advised",
+    bestAt: "Best: {range}", noGood: "No good time in the next 24 h",
+    reasonRain: "rain", reasonHeat: "heat", reasonWind: "strong wind",
+    nowLabel: "Now",
+
+    cigTitle: "🚬 How much dust did you breathe today?", cigText: "Today's air ≈ {n} cigarettes",
+    cigNote: "Berkeley Earth estimate: breathing air with 22 µg/m³ PM2.5 for 24 hours ≈ 1 cigarette. A rough guide.",
+
+    fullAq: "🧪 Full air quality", usAqi: "AQI (US)", ozone: "Ozone (O₃)", no2: "NO₂",
+    co: "CO", so2: "SO₂", uv: "UV index",
+    aqiLevels: ["Good", "Moderate", "Unhealthy for sensitive groups", "Unhealthy", "Very unhealthy", "Hazardous"],
+    uvLevels: ["Low", "Moderate", "High", "Very high", "Extreme"],
+
+    profile: "👤 Personal profile", profileDesc: "Tips, activities and alerts adapt to you",
+    profiles: { none: "General", sensitive: "Asthma / allergy", pregnant: "Pregnant", elderly: "Older adult (65+)",
+      child: "Parent with a child", athlete: "Athlete" },
+    profileIcons: { none: "🙂", sensitive: "🫁", pregnant: "🤰", elderly: "👴", child: "👶", athlete: "🏃" },
+    profileAdvice: {
+      sensitive: "You have asthma or allergies: keep your inhaler with you when PM10 is above 50, and limit time outdoors above 100.",
+      pregnant: "Dust is especially harmful during pregnancy: above PM10 100, stay indoors more and wear an N95 mask.",
+      elderly: "Protect your heart and lungs: on dusty days, move walks to the cleanest hours.",
+      child: "Children are sensitive to dust: above PM10 50, cut down outdoor play.",
+      athlete: "You breathe harder while training: when dust is high, train indoors.",
+    },
+    profileAlertNote: "With a sensitive profile, the bot alerts you from PM10 {n} µg/m³.",
+    forYou: "For you",
+
+    ranking: "🏆 City ranking (now)", rankClean: "Cleanest", rankDusty: "Dustiest",
+    history: "📅 Dust history", days30: "30 days", days90: "90 days",
+    avgPm: "Average PM10", dustyDays: "Dusty days", dustyDaysDesc: "daily mean PM10 > 100",
+    whoDays: "Above WHO guideline", whoDaysDesc: "daily mean PM10 > 45", worstDay: "Dustiest day",
+    calendar: "Calendar (daily mean PM10)", dailyMean: "Daily mean PM10", whoLine: "WHO guideline (45)",
+    historySummary: "There were {d} dusty days in the last {n} days.", less: "Less", more: "More",
+
+    reports: "📸 Storm photos", reportsNear: "Nearby, last 48 hours",
+    noReports: "No storm photos nearby yet.", sendReport: "📸 Send a photo",
+    reportTitle: "Send a storm photo", reportHint: "See a dust or sand storm? Send a photo and we'll warn others!",
+    choosePhoto: "📷 Choose or take a photo", captionPh: "Caption (e.g. visibility 100 m)", send: "Send",
+    sending: "Sending…", reportPending: "Thank you! Your photo is being reviewed. 🙏", reportSaved: "Thank you! Photo received. 🙏",
+    reportLimit: "You can send up to 5 photos per day", reportOnlyTg: "Sending photos only works inside Telegram",
+    reportPlace: "Place: {place}", kmAway: "{km} km", reportsLayer: "Storm photos",
+
+    mapCities: "🏙 Cities", mapCloud: "🌪 Dust cloud", cloudLegend: "Dust, µg/m³",
+    cloudNote: "3-day forecast · tap ▶", cloudLoading: "Loading dust map…",
+
+    aralTitle: "🌊 The Aral Sea disaster",
+    aralIntro: "One of the main sources of dust storms: the dried-up Aral seabed (the Aralkum desert). Pick a year:",
+    aralSchema: "Schematic illustration",
+    aral: {
+      1960: "The Aral Sea was one of the largest lakes in the world (about 68,000 km²). Fishing thrived and Muynak was a port town.",
+      1980: "Most of the Amu Darya and Syr Darya water was diverted to cotton fields. The sea became shallow and salty fast.",
+      1989: "The sea split into the Small (North) and Large (South) Aral. The shore moved tens of kilometres away from Muynak.",
+      2005: "Kazakhstan built the Kokaral dam and the Small Aral began to partly recover. The Large Aral kept shrinking.",
+      2014: "The eastern basin of the Large Aral dried up completely for the first time. The salty Aralkum desert grew in its place.",
+      2024: "Salt and dust from the Aralkum travel hundreds of kilometres. Uzbekistan is planting saxaul forests on the dry seabed to reduce dust.",
+    },
   },
 };
 
@@ -80,4 +281,9 @@ window.WEEKDAYS_LONG = {
   uz: ["Yakshanba", "Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"],
   ru: ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"],
   en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+};
+window.MONTHS_SHORT = {
+  uz: ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"],
+  ru: ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"],
+  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
 };
