@@ -108,3 +108,25 @@ async def get_grid(lats, lons):
         wind.append({"hourly": {"time": times, "wind_speed_10m": [round(6 + 6 * math.exp(-((i - 28) / 8) ** 2), 1) for i in range(72)],
                                 "wind_direction_10m": [(280 + i) % 360 for i in range(72)]}})
     return air, wind
+
+
+async def sensor_nearest(lat, lon, token):
+    from sensors import PM10_BP, PM25_BP, aqi_to_conc
+    if lon < 62:  # g'arbda stansiya yo'q deb faraz qilamiz
+        return {"available": False, "reason": "far",
+                "station": {"name": "Tashkent US Embassy", "lat": 41.30, "lon": 69.27, "km": 820, "url": None, "time": ""}}
+    now, _ = _times()
+    return {"available": True,
+            "station": {"name": "Tashkent US Embassy", "lat": 41.30, "lon": 69.27, "km": round(abs(lon - 69.27) * 85),
+                        "url": "https://aqicn.org/city/uzbekistan/tashkent/us-embassy/", "time": now.strftime("%Y-%m-%d %H:%M")},
+            "aqi": 78, "dominant": "pm25", "pm25_aqi": 78, "pm10_aqi": 41,
+            "pm25": aqi_to_conc(78, PM25_BP), "pm10": aqi_to_conc(41, PM10_BP), "temp": 18, "humidity": 40}
+
+
+async def sensor_bounds(token):
+    return [{"lat": 41.30, "lon": 69.27, "aqi": 78, "name": "Tashkent US Embassy", "time": ""},
+            {"lat": 41.34, "lon": 69.33, "aqi": 64, "name": "Tashkent, Yunusobod", "time": ""},
+            {"lat": 41.28, "lon": 69.20, "aqi": 92, "name": "Tashkent, Chilonzor", "time": ""},
+            {"lat": 39.65, "lon": 66.96, "aqi": 55, "name": "Samarkand", "time": ""},
+            {"lat": 40.38, "lon": 71.78, "aqi": 121, "name": "Fergana", "time": ""},
+            {"lat": 43.24, "lon": 76.89, "aqi": 160, "name": "Almaty (KZ)", "time": ""}]

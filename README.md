@@ -26,11 +26,20 @@ Birinchi bot (`chang-bot`) o'zgarmaydi va alohida ishlayveradi.
 - 🌊 Orol dengizi fojiasi: yillar bo'yicha interaktiv sxema
 
 **⚙️ Sozlamalar**
+- 🎨 Mavzu: Avto (Telegram), ☀️ Yorug' yoki 🌙 Qorong'i
 - Til: o'zbekcha (asosiy), ruscha, inglizcha
 - 👤 **Shaxsiy profil**: astma/allergiya, homilador, keksa, bolali ota-ona, sportchi. Maslahatlar, faollik chegaralari va ogohlantirishlar moslashadi (sezgir profilda bot PM10 150 dan ogohlantiradi)
 - Bo'ron ogohlantirishlari va kunlik hisobot, sog'liq maslahatlari
 
-🌓 Telegram mavzusiga moslashadi. 🔐 Sozlamalar va rasm yuborish Telegram imzosi (initData) bilan himoyalangan.
+🎨 Dizayn O'zbekiston tabiatidan ilhomlangan: firuza (Samarqand koshinlari), qum (Qizilqum), saksovul ranglari, milliy girih naqshi va hudud bo'yicha fon (Orolbo'yi, Qizilqum, Zarafshon vodiysi, Farg'ona vodiysi, Mirzacho'l, Poytaxt). 🔐 Sozlamalar va rasm yuborish Telegram imzosi (initData) bilan himoyalangan.
+
+## 📡 Haqiqiy datchiklar (ixtiyoriy, bepul)
+Ilova asosan sun'iy yo'ldosh modeli (Copernicus CAMS) ma'lumotini ko'rsatadi. Haqiqiy o'lchash stansiyalari ma'lumotini ham qo'shish mumkin (Toshkent va boshqa shaharlardagi datchiklar):
+1. https://aqicn.org/data-platform/token/ sahifasini oching, email kiriting va emailga kelgan **token**ni oling.
+2. Railway → **chang-app** → **Variables** → `WAQI_TOKEN` = token.
+3. Ilovada **📡 Haqiqiy datchik** kartasi va xaritada **📡 Datchiklar** rejimi paydo bo'ladi.
+
+Agar yaqin atrofda (60 km ichida) datchik bo'lmasa, ilova buni yozib, model ma'lumotini ko'rsataveradi.
 
 ## Bo'ron rasmlari va admin
 Railway'da `ADMIN_ID` o'zgaruvchisiga o'z Telegram ID raqamingizni yozing (@userinfobot orqali bilib olasiz). Shunda:
@@ -51,6 +60,7 @@ Railway'da `ADMIN_ID` o'zgaruvchisiga o'z Telegram ID raqamingizni yozing (@user
 | `scene.py` | Ob-havoga mos shahar rasmlari |
 | `db.py` | Foydalanuvchi sozlamalari va bo'ron rasmlari (SQLite) |
 | `risk.py` | Bo'ron xavfi indeksi |
+| `sensors.py` | Haqiqiy datchiklar (aqicn.org) |
 | `mock_data.py` | Faqat sinov uchun soxta ma'lumot (`MOCK_DATA=1`) |
 
 ---

@@ -37,6 +37,7 @@ from aiohttp import web  # noqa: E402
 
 import api  # noqa: E402
 import db  # noqa: E402
+import sensors  # noqa: E402
 from risk import storm_risk  # noqa: E402
 from scene import make_scene, nearest_city  # noqa: E402
 from texts import (ALERT_DUST, ALERT_PM10, CITIES, CITY_EN, LANGS, LEVEL_COLORS,  # noqa: E402
@@ -44,6 +45,7 @@ from texts import (ALERT_DUST, ALERT_PM10, CITIES, CITY_EN, LANGS, LEVEL_COLORS,
                    WIND_GUST_WARN, city_name, level, t)
 
 TOKEN = os.getenv("BOT_TOKEN", "")
+WAQI_TOKEN = os.getenv("WAQI_TOKEN", "").strip()  # aqicn.org bepul tokeni (haqiqiy datchiklar)
 def _int_env(name: str) -> int:
     """Raqamli o'zgaruvchi. Noto'g'ri yozilsa (masalan, @username) dastur to'xtamaydi."""
     raw = (os.getenv(name) or "").strip()
@@ -80,6 +82,8 @@ if MOCK:
     import mock_data
     for _name in ("get_air", "get_weather", "get_air_many", "get_weather_many", "get_history", "get_grid"):
         setattr(api, _name, getattr(mock_data, _name))
+    sensors.nearest, sensors.in_bounds = mock_data.sensor_nearest, mock_data.sensor_bounds
+    WAQI_TOKEN = WAQI_TOKEN or "mock"
 
 
 # ---------------- Kesh ----------------
@@ -166,6 +170,7 @@ async def h_meta(request):
         "info": {lang: T[lang]["info"] for lang in LANGS},
         "bot_ready": bool(TOKEN),
         "moderated": bool(ADMIN_ID),
+        "sensors": bool(WAQI_TOKEN),
     })
 
 
@@ -288,6 +293,36 @@ async def h_history(request):
     except Exception as e:  # noqa: BLE001
         log.warning("Tarix xatosi: %s", e)
         raise web.HTTPBadGateway(text="data source error")
+
+
+# ---------------- API: haqiqiy datchiklar ----------------
+async def h_sensor(request):
+    if not WAQI_TOKEN:
+        return web.json_response({"available": False, "reason": "no_token"})
+    _, lat, lon, _ = resolve_place(request.query)
+
+    async def load():
+        return await sensors.nearest(lat, lon, WAQI_TOKEN)
+
+    try:
+        return web.json_response(await cached(("sensor", round(lat, 1), round(lon, 1)), load))
+    except Exception as e:  # noqa: BLE001
+        log.warning("Datchik xatosi: %s", e)
+        return web.json_response({"available": False, "reason": "error"})
+
+
+async def h_sensors(request):
+    if not WAQI_TOKEN:
+        return web.json_response({"stations": []})
+
+    async def load():
+        return await sensors.in_bounds(WAQI_TOKEN)
+
+    try:
+        return web.json_response({"stations": await cached("sensors_map", load, ttl=30 * 60)})
+    except Exception as e:  # noqa: BLE001
+        log.warning("Datchiklar xaritasi xatosi: %s", e)
+        return web.json_response({"stations": []})
 
 
 # ---------------- API: foydalanuvchi sozlamalari ----------------
@@ -432,6 +467,8 @@ def make_web_app(bot: Bot | None = None) -> web.Application:
     app.router.add_get("/api/scene", h_scene)
     app.router.add_get("/api/grid", h_grid)
     app.router.add_get("/api/history", h_history)
+    app.router.add_get("/api/sensor", h_sensor)
+    app.router.add_get("/api/sensors", h_sensors)
     app.router.add_get("/api/me", h_me_get)
     app.router.add_post("/api/me", h_me_post)
     app.router.add_get("/api/reports", h_reports)

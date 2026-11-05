@@ -10,6 +10,15 @@
   const SENSITIVE = ["sensitive", "pregnant", "elderly", "child"];
   const RISK_COLORS = ["#4caf50", "#fbc02d", "#fb8c00", "#e53935"];
   const STATUS_COLORS = ["#2e9d4f", "#e08a00", "#d93025"];
+  // O'zbekiston tabiati ranglari: firuza (koshinlar), lojuvard, qum, anor, saksovul, o'rik, tog'
+  const NATURE = { firuza: "#12968b", lojuvard: "#2c5aa8", qum: "#d9a050", anor: "#c63b4a", saksovul: "#5f8f3e", orik: "#f08a4b", tog: "#6d7fb0" };
+  const REGION_OF = { nukus: "aral", moynoq: "aral", urganch: "khorezm", buxoro: "kyzylkum", navoiy: "kyzylkum", qarshi: "kashka",
+    termiz: "surkhan", samarqand: "zarafshan", toshkent: "capital", jizzax: "mirzachul", guliston: "mirzachul",
+    namangan: "fergana", andijon: "fergana", fargona: "fergana" };
+  const REGION_STYLE = { aral: ["🌊", "desert"], khorezm: ["🕌", "desert"], kyzylkum: ["🏜", "desert"], kashka: ["🌾", "desert"],
+    surkhan: ["☀️", "desert"], zarafshan: ["🕌", "heritage"], capital: ["🏙", "capital"], mirzachul: ["🌾", "steppe"],
+    fergana: ["⛰", "mountain"], other: ["📍", "capital"] };
+  const THEMES = ["auto", "light", "dark"];
 
   const state = {
     lang: "uz",
@@ -33,6 +42,9 @@
     reports: null,
     aralYear: 1960,
     photoBlob: null,
+    theme: "auto",
+    sensor: null,
+    sensorsMap: null,
   };
 
   // ---------------- Yordamchilar ----------------
@@ -124,15 +136,31 @@
     return c ? [c.lat, c.lon] : [state.place.lat, state.place.lon];
   };
 
-  // ---------------- Mavzu ----------------
+  // ---------------- Hudud (geografiya) ----------------
+  function regionKey() {
+    const k = state.place.key || (state.data && state.data.scene_key);
+    return REGION_OF[k] || "other";
+  }
+  function applyRegion() {
+    document.documentElement.dataset.region = REGION_STYLE[regionKey()][1];
+  }
+
+  // ---------------- Mavzu (Avto / Yorug' / Qorong'i) ----------------
   function applyTheme() {
-    const dark = tg ? tg.colorScheme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-    document.documentElement.dataset.scheme = dark ? "dark" : "light";
+    const root = document.documentElement;
+    const sysDark = tg && tg.colorScheme ? tg.colorScheme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = state.theme === "dark" || (state.theme === "auto" && sysDark);
+    root.dataset.scheme = dark ? "dark" : "light";
+    root.dataset.theme = state.theme;
     if (tg) {
       try {
-        const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
-        tg.setHeaderColor("secondary_bg_color");
-        tg.setBackgroundColor(bg || "secondary_bg_color");
+        if (state.theme === "auto") {
+          tg.setHeaderColor("secondary_bg_color");
+          tg.setBackgroundColor("secondary_bg_color");
+        } else {
+          const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+          if (/^#[0-9a-f]{6}$/i.test(bg)) { tg.setHeaderColor(bg); tg.setBackgroundColor(bg); }
+        }
       } catch { /* eski versiya */ }
     }
     if (window.Chart) {
@@ -156,6 +184,7 @@
     try {
       state.data = await api("/api/city?" + placeQuery());
       renderAll();
+      loadSensor();
     } catch (e) {
       console.error(e);
       renderError();
@@ -441,6 +470,50 @@
     if (el) { el.innerHTML = reportsCardHTML(); decorateHeads(el.parentNode); }
   }
 
+  // ---------------- Haqiqiy datchik ----------------
+  async function loadSensor() {
+    if (!state.meta.sensors) return;
+    state.sensor = null;
+    renderSensorCard();
+    try { state.sensor = await api("/api/sensor?" + placeQuery()); } catch { state.sensor = { available: false, reason: "error" }; }
+    renderSensorCard();
+  }
+
+  function renderSensorCard() {
+    const el = $("#sensorCard");
+    if (!el) return;
+    el.innerHTML = sensorCardHTML();
+    decorateHeads(el.parentNode);
+  }
+
+  function sensorCardHTML() {
+    const s = state.sensor, head = `<h4>${esc(tr("sensor"))}</h4>`;
+    if (!s) return head + '<div class="skeleton" style="height:110px;margin:0"></div>';
+    if (!s.available) {
+      const msg = s.reason === "far" && s.station ? tr("sensorFar", { name: s.station.name, km: s.station.km }) : tr("sensorErr");
+      return head + `<p class="muted small" style="margin:0">${esc(msg)}</p>`;
+    }
+    const ai = usAqiIdx(s.aqi || 0), a = state.data.air.current;
+    const row = (label, model, real, realAqi) => {
+      const max = Math.max(model || 0, real || 0, 1);
+      const col = realAqi !== null && realAqi !== undefined ? AQI_COLORS[usAqiIdx(realAqi)] : "var(--accent)";
+      return `<div class="cmp"><div class="cmp-l">${label}</div><div class="cmp-bars">
+        <div class="cmp-bar"><i style="width:${(100 * (model || 0) / max).toFixed(0)}%;background:var(--hint)"></i><span>${fmt(model)}</span></div>
+        <div class="cmp-bar"><i style="width:${(100 * (real || 0) / max).toFixed(0)}%;background:${col}"></i><span>≈${fmt(real)}</span></div>
+      </div></div>`;
+    };
+    const time = (s.station.time || "").slice(11, 16) || "—";
+    return head + `<div class="aqi-badge"><div class="ab-num" style="--ac:${AQI_COLORS[ai]}">${fmt(s.aqi)}</div>
+        <div><div class="ab-name">${esc(s.station.name)}</div>
+        <div class="muted small">${esc(tr("sensorKm", { km: s.station.km }))} · ${esc(tr("sensorUpdated", { time }))}</div>
+        <div class="small"><b>${esc(tr("sensorLegend"))}:</b> ${esc(tv("aqiLevels")[ai])}</div></div></div>
+      <div class="cmp-legend"><span><i style="background:var(--hint)"></i>${esc(tr("sensorModel"))}</span>
+        <span><i style="background:var(--accent)"></i>${esc(tr("sensorReal"))}</span><span class="muted">µg/m³</span></div>
+      ${row("PM2.5", a.pm2_5, s.pm25, s.pm25_aqi)}${row("PM10", a.pm10, s.pm10, s.pm10_aqi)}
+      <p class="muted small" style="margin:10px 0 0">${esc(tr("sensorNote"))}
+        ${s.station.url ? `<a class="ext-link" href="${esc(s.station.url)}">${esc(tr("sensorOpen"))} ↗</a>` : ""}</p>`;
+  }
+
   function heroHTML() {
     const d = state.data, a = d.air.current, w = (d.weather && d.weather.current) || null;
     const dt = new Date(a.time + ":00");
@@ -449,7 +522,8 @@
     return `<div class="hero" style="--hc:${color}">
       <img id="heroImg" alt="${esc(placeName())}" src="/api/scene?${placeQuery()}&bare=1&t=${encodeURIComponent(a.time)}">
       <div class="hero-shade"></div>
-      <div class="hero-top"><span>${esc(date)}</span><span class="hero-live"><i></i>${esc(tr("now"))}</span></div>
+      <div class="hero-top"><span><span class="hero-region">${REGION_STYLE[regionKey()][0]} ${esc(tv("regions")[regionKey()])}</span>
+        <span class="hero-date">${esc(date)}</span></span><span class="hero-live"><i></i>${esc(tr("now"))}</span></div>
       <div class="hero-bottom">
         <div>${w ? `<div class="hero-temp"><span data-count="${w.temperature_2m}">${fmt(w.temperature_2m)}</span>°</div>
           <div class="hero-desc">${weatherEmoji(w.weather_code)} ${esc(weatherName(w.weather_code))}</div>
@@ -474,7 +548,7 @@
   }
 
   // Kartochka sarlavhasidagi emojini rangli belgi (ikonka) qilib chiqaradi
-  const HEAD_COLORS = ["#2f7cf6", "#e9a23b", "#2fbf71", "#e5484d", "#8e4ec6", "#12a5b5", "#f76b15"];
+  const HEAD_COLORS = Object.values(NATURE);
   function decorateHeads(root) {
     const defaults = {
       [tr("airQuality")]: "🌫", [tr("weather")]: "⛅", [tr("next24")]: "📉", [tr("dustChart")]: "🏜",
@@ -511,6 +585,7 @@
   function renderHome() {
     const d = state.data, a = d.air.current, w = (d.weather && d.weather.current) || null;
     state._wIndex = hourlyIndex(d.weather && d.weather.hourly && d.weather.hourly.time);
+    applyRegion();
     const color = levelColor(a.pm10);
     let html = heroHTML() + quickHTML();
 
@@ -539,6 +614,7 @@
       </div>
       ${adv ? `<div class="for-you"><b>${tv("profileIcons")[state.profile]} ${esc(tr("forYou"))}:</b> ${esc(adv)}</div>` : ""}</div>`;
 
+    if (state.meta.sensors) html += `<div class="card" id="sensorCard">${sensorCardHTML()}</div>`;
     html += riskCard();
     html += activityCard();
 
@@ -758,6 +834,7 @@
     state.mapLayers.reports = L.layerGroup().addTo(state.map);
     state.mapLayers.arrows = L.layerGroup();
     state.mapLayers.dots = L.layerGroup();
+    state.mapLayers.sensors = L.layerGroup();
     fitCities();
     renderCityMarkers();
     renderReportPins();
@@ -770,6 +847,12 @@
   }
 
   function renderLegend() {
+    if (state.mapMode === "sensors") {
+      const lim = [0, 50, 100, 150, 200, 300];
+      $("#mapLegend").innerHTML = `<b>📡 ${esc(tr("sensorLegend"))}</b>` + AQI_COLORS.map((c, i) =>
+        `<span><i style="background:${c}"></i>${lim[i]}${i < lim.length - 1 ? "–" + lim[i + 1] : "+"}</span>`).join("");
+      return;
+    }
     if (state.mapMode === "cloud") {
       $("#mapLegend").innerHTML = `<b>${esc(tr("cloudLegend"))}</b> 0 <span class="gradient-bar"></span> 300+`;
       return;
@@ -920,17 +1003,28 @@
     document.querySelectorAll("#mapSeg button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
     $("#timeline").hidden = mode !== "cloud";
     if (!state.map) return;
-    if (mode === "cloud") {
-      state.map.removeLayer(state.mapLayers.cities);
-      state.map.removeLayer(state.mapLayers.reports);
-      showCloud();
-    } else {
-      togglePlay(false);
-      ["cloud", "arrows", "dots"].forEach((k) => state.mapLayers[k] && state.map.removeLayer(state.mapLayers[k]));
-      state.mapLayers.cities.addTo(state.map);
-      state.mapLayers.reports.addTo(state.map);
-    }
+    if (mode !== "cloud") togglePlay(false);
+    ["cities", "reports", "cloud", "arrows", "dots", "sensors"].forEach((k) => state.mapLayers[k] && state.map.removeLayer(state.mapLayers[k]));
+    if (mode === "cloud") showCloud();
+    else if (mode === "sensors") showSensors();
+    else { state.mapLayers.cities.addTo(state.map); state.mapLayers.reports.addTo(state.map); }
     renderLegend();
+  }
+
+  async function showSensors() {
+    if (!state.sensorsMap) {
+      try { state.sensorsMap = (await api("/api/sensors")).stations; } catch { state.sensorsMap = []; }
+    }
+    const g = state.mapLayers.sensors;
+    g.clearLayers();
+    state.sensorsMap.forEach((st) => {
+      const color = AQI_COLORS[usAqiIdx(st.aqi)];
+      const icon = L.divIcon({ className: "", html: `<div class="pin sensor-pin" style="background:${color}">📡 ${fmt(st.aqi)}</div>`, iconSize: [0, 0] });
+      L.marker([st.lat, st.lon], { icon }).addTo(g).bindPopup(
+        `<b>${esc(st.name)}</b><br>${esc(tr("sensorLegend"))}: <b>${fmt(st.aqi)}</b> · ${esc(tv("aqiLevels")[usAqiIdx(st.aqi)])}
+         ${st.time ? "<br><span style='opacity:.7'>" + esc(st.time) + "</span>" : ""}`);
+    });
+    if (state.mapMode === "sensors") g.addTo(state.map);
   }
 
   // ---------------- Statistika ----------------
@@ -1064,7 +1158,11 @@
     const disabled = inTelegram ? "" : "disabled";
     const tgHtml = (txt) => esc(txt).replace(/&lt;(\/?)(b|i)&gt;/g, "<$1$2>").replace(/\n/g, "<br>");
     const names = tv("profiles"), icons = tv("profileIcons");
-    let html = `<div class="card"><h4>${esc(tr("language"))}</h4><div class="seg">` +
+    const themeNames = { auto: tr("themeAuto"), light: tr("themeLight"), dark: tr("themeDark") };
+    let html = `<div class="card"><h4>${esc(tr("theme"))}</h4><div class="seg">` +
+      THEMES.map((m) => `<button type="button" data-theme-set="${m}" class="${m === state.theme ? "on" : ""}">${esc(themeNames[m])}</button>`).join("") +
+      `</div><p class="muted small" style="margin:8px 0 0">${esc(tr("themeDesc"))}</p></div>`;
+    html += `<div class="card"><h4>${esc(tr("language"))}</h4><div class="seg">` +
       LANGS.map((l) => `<button type="button" data-lang="${l}" class="${l === state.lang ? "on" : ""}">${{ uz: "O'zbekcha", ru: "Русский", en: "English" }[l]}</button>`).join("") +
       `</div></div>`;
     html += `<div class="card"><h4>${esc(tr("profile"))}</h4><p class="muted small" style="margin:-4px 0 10px">${esc(tr("profileDesc"))}</p>
@@ -1095,6 +1193,15 @@
       console.error(e);
       if (!silent) toast(tr("error"));
     }
+  }
+
+  function setTheme(m) {
+    if (!THEMES.includes(m) || m === state.theme) return;
+    state.theme = m;
+    store.set("theme", m);
+    haptic();
+    applyTheme();
+    if (state.data) renderAll(); else renderSettings();
   }
 
   function setProfile(p) {
@@ -1282,6 +1389,10 @@
       if (p) selectPlace({ key: p.dataset.key });
       const l = e.target.closest("[data-lang]");
       if (l) setLang(l.dataset.lang);
+      const th = e.target.closest("[data-theme-set]");
+      if (th) setTheme(th.dataset.themeSet);
+      const ext = e.target.closest(".ext-link");
+      if (ext) { e.preventDefault(); if (tg && tg.openLink) tg.openLink(ext.href); else window.open(ext.href, "_blank", "noopener"); }
       const pr = e.target.closest("[data-profile]");
       if (pr) setProfile(pr.dataset.profile);
       if (e.target.closest("#openReport")) { haptic(); openReportSheet(); }
@@ -1296,12 +1407,14 @@
       if (e.target.id === "tAlerts") { haptic(); saveSettings({ alerts: e.target.checked }); }
       if (e.target.id === "tDaily") { haptic(); saveSettings({ daily: e.target.checked }); }
     });
-    if (tg) tg.onEvent("themeChanged", () => { applyTheme(); if (state.data) renderAll(); });
+    if (tg) tg.onEvent("themeChanged", () => { if (state.theme !== "auto") return; applyTheme(); if (state.data) renderAll(); });
   }
 
   // ---------------- Boshlash ----------------
   async function init() {
     if (tg) { tg.ready(); tg.expand(); try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch { /* */ } }
+    state.theme = store.get("theme", "auto");
+    if (!THEMES.includes(state.theme)) state.theme = "auto";
     applyTheme();
     const tgLang = tg && tg.initDataUnsafe && tg.initDataUnsafe.user && (tg.initDataUnsafe.user.language_code || "").slice(0, 2);
     state.lang = store.get("lang", LANGS.includes(tgLang) ? tgLang : "uz");
@@ -1317,6 +1430,8 @@
       return renderError();
     }
     applyI18n();
+    const sensBtn = $('#mapSeg [data-mode="sensors"]');
+    if (sensBtn) sensBtn.hidden = !state.meta.sensors;
     if (inTelegram) {
       try {
         state.settings = await api("/api/me");
