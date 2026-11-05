@@ -723,7 +723,7 @@ def nearest_city(lat, lon, max_km=60):
     return best if distance_km(lat, lon, CITIES[best][2], CITIES[best][3]) <= max_km else None
 
 
-def make_scene(city_key, place, lang="uz", weather=None, air=None) -> bytes:
+def make_scene(city_key, place, lang="uz", weather=None, air=None, info=True) -> bytes:
     """Shahar manzarasi + ob-havo + ma'lumot paneli. JPEG baytlarini qaytaradi."""
     style = CITY_STYLE.get(city_key, "generic")
     cond, night, haze = condition(weather, air)
@@ -782,7 +782,8 @@ def make_scene(city_key, place, lang="uz", weather=None, air=None) -> bytes:
         d.rectangle(B(0, 0, W, H), fill=(214, 178, 118, 60))
         cv.merge(lay)
 
-    draw_info(cv, place, lang, weather, air)
+    if info:
+        draw_info(cv, place, lang, weather, air)
     out = cv.img.resize((W, H), Image.LANCZOS).convert("RGB")
     buf = io.BytesIO()
     out.save(buf, format="JPEG", quality=90, optimize=True)

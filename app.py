@@ -225,6 +225,7 @@ async def h_scene(request):
     key, lat, lon, scene_key = resolve_place(request.query)
     lang = request.query.get("lang", "uz")
     lang = lang if lang in LANGS else "uz"
+    info = request.query.get("bare") != "1"  # bare=1: yozuvlarsiz manzara (ilova o'zi yozadi)
     place = city_name(key, lang) if key else T[lang]["my_location"]
     try:
         d = await point_data(lat, lon)
@@ -233,10 +234,10 @@ async def h_scene(request):
 
     async def render():
         air_cur = d["air"]["current"] if d["air"] else None
-        return await asyncio.to_thread(make_scene, scene_key, place, lang, d["weather"], air_cur)
+        return await asyncio.to_thread(make_scene, scene_key, place, lang, d["weather"], air_cur, info)
 
     hour = datetime.now(TZ).strftime("%Y%m%d%H")
-    img = await cached(("scene", scene_key, round(lat, 2), round(lon, 2), lang, hour), render)
+    img = await cached(("scene", scene_key, round(lat, 2), round(lon, 2), lang if info else "-", info, hour), render)
     return web.Response(body=img, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=900"})
 
 

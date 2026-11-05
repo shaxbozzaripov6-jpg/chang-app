@@ -193,6 +193,7 @@
       '</p><button type="button" class="retry">' + esc(tr("retry")) + "</button></div>";
     $("#view-home").innerHTML = html;
     $("#view-forecast").innerHTML = html;
+    decorateHeads($("#view-forecast"));
     document.querySelectorAll(".retry").forEach((b) => b.addEventListener("click", () => loadData("skeleton")));
   }
 
@@ -318,7 +319,7 @@
     const [mx, my] = pt(pm10 || 0, r);
     return `<svg class="gauge" viewBox="0 0 150 92" aria-hidden="true">${arcs}
       <circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="8" fill="${levelColor(pm10)}" stroke="var(--card)" stroke-width="3"/>
-      <text x="${cx}" y="${cy - 10}" text-anchor="middle" class="gauge-val">${fmt(pm10)}</text>
+      <text x="${cx}" y="${cy - 10}" text-anchor="middle" class="gauge-val" data-count="${pm10}">${fmt(pm10)}</text>
       <text x="${cx}" y="${cy + 8}" text-anchor="middle" class="gauge-unit">PM10 µg/m³</text></svg>`;
   }
 
@@ -346,9 +347,10 @@
     const r = 46, c = 2 * Math.PI * r, off = c * (1 - clamp(score, 0, 100) / 100);
     return `<svg class="risk-ring" viewBox="0 0 112 112" aria-hidden="true">
       <circle cx="56" cy="56" r="${r}" fill="none" stroke="var(--soft)" stroke-width="11"/>
-      <circle cx="56" cy="56" r="${r}" fill="none" stroke="${RISK_COLORS[lvl]}" stroke-width="11" stroke-linecap="round"
-        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 56 56)"/>
-      <text x="56" y="62" text-anchor="middle" class="rv">${score}</text>
+      <circle class="arc" cx="56" cy="56" r="${r}" fill="none" stroke="${RISK_COLORS[lvl]}" stroke-width="11" stroke-linecap="round"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 56 56)"
+        style="--c:${c.toFixed(1)};--off:${off.toFixed(1)}"/>
+      <text x="56" y="62" text-anchor="middle" class="rv" data-count="${score}">${score}</text>
       <text x="56" y="78" text-anchor="middle" class="rl">/ 100</text></svg>`;
   }
 
@@ -401,7 +403,7 @@
     const whole = Math.floor(n), frac = n - whole;
     const icons = "🚬".repeat(Math.min(whole, 12)) + (frac >= 0.25 && whole < 12 ? '<span class="half">🚬</span>' : "");
     return `<div class="card"><h4>${esc(tr("cigTitle"))}</h4>
-      <div class="cig"><div class="cig-num">${fmt(n, 1)}</div>
+      <div class="cig"><div class="cig-num" data-count="${n.toFixed(1)}" data-dec="1">${fmt(n, 1)}</div>
         <div><div>${esc(tr("cigText", { n: fmt(n, 1) }))}</div><div class="cig-icons">${icons || "✨"}</div></div></div>
       <p class="muted small" style="margin:10px 0 0">${esc(tr("cigNote"))}</p></div>`;
   }
@@ -436,14 +438,81 @@
 
   function renderReportsCard() {
     const el = $("#reportsCard");
-    if (el) el.innerHTML = reportsCardHTML();
+    if (el) { el.innerHTML = reportsCardHTML(); decorateHeads(el.parentNode); }
+  }
+
+  function heroHTML() {
+    const d = state.data, a = d.air.current, w = (d.weather && d.weather.current) || null;
+    const dt = new Date(a.time + ":00");
+    const date = `${WEEKDAYS_LONG[state.lang][dt.getDay()]}, ${shortDate(a.time)} · ${a.time.slice(11, 16)}`;
+    const color = levelColor(a.pm10);
+    return `<div class="hero" style="--hc:${color}">
+      <img id="heroImg" alt="${esc(placeName())}" src="/api/scene?${placeQuery()}&bare=1&t=${encodeURIComponent(a.time)}">
+      <div class="hero-shade"></div>
+      <div class="hero-top"><span>${esc(date)}</span><span class="hero-live"><i></i>${esc(tr("now"))}</span></div>
+      <div class="hero-bottom">
+        <div>${w ? `<div class="hero-temp"><span data-count="${w.temperature_2m}">${fmt(w.temperature_2m)}</span>°</div>
+          <div class="hero-desc">${weatherEmoji(w.weather_code)} ${esc(weatherName(w.weather_code))}</div>
+          <div class="hero-feels">${esc(tr("feels"))} ${fmt(w.apparent_temperature)}°</div>`
+          : `<div class="hero-desc">${esc(placeName())}</div>`}</div>
+        <div class="hero-aqi"><div class="ha-num" data-count="${a.pm10}">${fmt(a.pm10)}</div><div class="ha-unit">PM10 µg/m³</div>
+          <div class="ha-lv" style="--lc:${color}">${esc(levelName(a.pm10))}</div></div>
+      </div></div>`;
+  }
+
+  function quickHTML() {
+    const d = state.data, a = d.air.current, w = (d.weather && d.weather.current) || {};
+    const q = (icon, color, label, val) => `<div class="q" style="--qc:${color}"><div class="q-ico">${icon}</div>
+      <div><div class="q-l">${esc(label)}</div><div class="q-v">${val}</div></div></div>`;
+    let html = '<div class="quick">';
+    if (d.risk) html += q("🎯", RISK_COLORS[d.risk.level], tr("riskShort"), `${d.risk.score}<span class="muted small">/100</span>`);
+    if (w.wind_speed_10m !== undefined) html += q("💨", "#1e88e5", tr("wind"), `${fmt(w.wind_speed_10m)} ${tr("ms")} ${esc(windDir(w.wind_direction_10m))}`);
+    if (w.relative_humidity_2m !== undefined) html += q("💧", "#26a6d1", tr("humidity"), `${fmt(w.relative_humidity_2m)}%`);
+    if (a.uv_index !== undefined && a.uv_index !== null) html += q("☀️", "#f5a623", tr("uv"), fmt(a.uv_index, 1));
+    html += q("🫁", levelColor(a.pm10), tr("pm25"), `${fmt(a.pm2_5)} <span class="muted small">µg/m³</span>`);
+    return html + "</div>";
+  }
+
+  // Kartochka sarlavhasidagi emojini rangli belgi (ikonka) qilib chiqaradi
+  const HEAD_COLORS = ["#2f7cf6", "#e9a23b", "#2fbf71", "#e5484d", "#8e4ec6", "#12a5b5", "#f76b15"];
+  function decorateHeads(root) {
+    const defaults = {
+      [tr("airQuality")]: "🌫", [tr("weather")]: "⛅", [tr("next24")]: "📉", [tr("dustChart")]: "🏜",
+      [tr("windChart")]: "💨", [tr("language")]: "🌐", [tr("notifications")]: "🔔",
+    };
+    root.querySelectorAll(".card > h4:not(.ch)").forEach((h) => {
+      const text = h.textContent.trim();
+      let icon = null, title = text;
+      const m = text.match(/^(\S+)\s+(.*)$/);
+      if (m && /\p{Extended_Pictographic}/u.test(m[1])) { icon = m[1]; title = m[2]; }
+      if (!icon) icon = defaults[text.split(" · ")[0]] || "•";
+      const color = HEAD_COLORS[[...icon].reduce((acc, ch) => acc + ch.codePointAt(0), 0) % HEAD_COLORS.length];
+      h.classList.add("ch");
+      h.innerHTML = `<span class="h-ico" style="--ic:${color}">${icon}</span><span>${esc(title)}</span>`;
+    });
+  }
+
+  // Raqamlarni 0 dan sanab chiqaradi
+  function animateCounts(root) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    root.querySelectorAll("[data-count]").forEach((el) => {
+      const target = parseFloat(el.dataset.count);
+      if (Number.isNaN(target)) return;
+      const dec = +(el.dataset.dec || 0), t0 = performance.now(), dur = 900;
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+        el.textContent = (target * e).toFixed(dec);
+        if (k < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
   }
 
   function renderHome() {
     const d = state.data, a = d.air.current, w = (d.weather && d.weather.current) || null;
     state._wIndex = hourlyIndex(d.weather && d.weather.hourly && d.weather.hourly.time);
     const color = levelColor(a.pm10);
-    let html = "";
+    let html = heroHTML() + quickHTML();
 
     if (d.warn.dust) {
       const t = d.warn.dust.time;
@@ -456,8 +525,6 @@
         { when: whenText(t), hour: t.slice(11, 16), gust: fmt(d.warn.wind.gust) }))}</span></div>`;
     }
 
-    html += `<div class="hero"><img id="heroImg" alt="${esc(placeName())}"
-      src="/api/scene?${placeQuery()}&lang=${state.lang}&t=${encodeURIComponent(a.time)}"></div>`;
 
     const adv = state.profile !== "none" ? tv("profileAdvice")[state.profile] : null;
     html += `<div class="card"><h4>${esc(tr("airQuality"))}</h4>
@@ -497,6 +564,8 @@
     html += `<p class="footer-note">${esc(tr("updated"))}: ${esc(a.time.replace("T", " "))}</p>`;
 
     $("#view-home").innerHTML = html;
+    decorateHeads($("#view-home"));
+    animateCounts($("#view-home"));
     const img = $("#heroImg");
     img.addEventListener("load", () => img.classList.add("loaded"));
     if (img.complete) img.classList.add("loaded");
@@ -625,6 +694,7 @@
     }
     html += `<p class="footer-note">${esc(tr("source"))}</p>`;
     $("#view-forecast").innerHTML = html;
+    decorateHeads($("#view-forecast"));
     if (state.view === "forecast") drawForecastCharts();
   }
 
@@ -984,6 +1054,7 @@
        <div class="card"><h4>${esc(tr("history"))} · ${esc(placeName())}</h4>${historyHTML()}</div>
        <div class="card" id="aralCard">${aralHTML()}</div>
        <p class="footer-note">${esc(tr("source"))}</p>`;
+    decorateHeads($("#view-stats"));
     drawHistoryChart();
   }
 
@@ -1012,6 +1083,7 @@
     </div>`;
     html += `<p class="footer-note">${esc(tr("source"))}</p>`;
     $("#view-settings").innerHTML = html;
+    decorateHeads($("#view-settings"));
   }
 
   async function saveSettings(patch, silent) {
@@ -1216,7 +1288,7 @@
       const hd = e.target.closest("#histSeg button[data-days]");
       if (hd) { haptic(); state.historyDays = +hd.dataset.days; renderStats(); }
       const y = e.target.closest("#aralYears button[data-year]");
-      if (y) { haptic(); state.aralYear = +y.dataset.year; $("#aralCard").innerHTML = aralHTML(); }
+      if (y) { haptic(); state.aralYear = +y.dataset.year; $("#aralCard").innerHTML = aralHTML(); decorateHeads($("#view-stats")); }
       const cell = e.target.closest("#calendar i[data-day]");
       if (cell) toast(shortDate(cell.dataset.day) + " · PM10 " + cell.dataset.v + " µg/m³");
     });
