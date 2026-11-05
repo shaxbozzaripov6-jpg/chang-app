@@ -428,14 +428,20 @@
   // ---------------- Xarita ----------------
   function initMap() {
     if (state.map || !window.L) return;
-    const dark = document.documentElement.dataset.scheme === "dark";
-    state.map = L.map("map", { zoomControl: false, attributionControl: true }).setView([41.3, 64.5], 5.4);
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, {
-      maxZoom: 12, subdomains: "abcd",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    state.map = L.map("map", { zoomControl: false, attributionControl: true, zoomSnap: 0.25 });
+    // OpenStreetMap xaritasi: API kalit talab qilmaydi. Qorong'i mavzuda CSS filtr bilan qoraytiriladi.
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18, className: "osm-tiles",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(state.map);
+    fitCities();
     renderMapMarkers();
     renderLegend();
+  }
+
+  function fitCities() {
+    const pts = state.meta.cities.map((c) => [c.lat, c.lon]);
+    state.map.fitBounds(L.latLngBounds(pts), { padding: [28, 28], paddingBottomRight: [28, 70] });
   }
 
   function renderLegend() {
@@ -557,7 +563,7 @@
     if (view === "forecast" && state.data) drawForecastCharts();
     if (view === "map") {
       initMap();
-      setTimeout(() => state.map && state.map.invalidateSize(), 60);
+      setTimeout(() => { if (state.map) { state.map.invalidateSize(); fitCities(); } }, 60);
     }
   }
 
