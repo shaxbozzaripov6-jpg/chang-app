@@ -33,6 +33,27 @@ Birinchi bot (`chang-bot`) o'zgarmaydi va alohida ishlayveradi.
 
 🎨 Dizayn O'zbekiston tabiatidan ilhomlangan: firuza (Samarqand koshinlari), qum (Qizilqum), saksovul ranglari, milliy girih naqshi va hudud bo'yicha fon (Orolbo'yi, Qizilqum, Zarafshon vodiysi, Farg'ona vodiysi, Mirzacho'l, Poytaxt). 🔐 Sozlamalar va rasm yuborish Telegram imzosi (initData) bilan himoyalangan.
 
+## 🗄 Ochiq ma'lumotlar arxivi
+Ilova **14 ta shahar** bo'yicha har kungi ma'lumotlarni avtomatik saqlaydi:
+PM10, PM2.5, chang (o'rtacha va maksimum), aerozol (AOD), AQI, ozon, NO₂, SO₂, CO, UV, harorat (min/maks), namlik, shamol, shiddat, yog'in, bo'ron xavfi indeksi va haqiqiy datchik o'lchovlari (`WAQI_TOKEN` bo'lsa, har soat yoziladi).
+
+- Birinchi ishga tushishda **o'tgan 92 kun** avtomatik to'ldiriladi. Keyin arxiv har kuni o'sib boradi (soat 00:07 va 06:07 da yangilanadi).
+- Ilovada: **Statistika** bo'limida 30 kun / 90 kun / 1 yil / hammasi, turli ko'rsatkichlar grafigi, istalgan kunning to'liq tafsiloti.
+
+**Arxiv ochiq, istalgan odam yuklab olishi mumkin:**
+| Usul | Qanday |
+|---|---|
+| Ilovada | **Statistika** → **⬇️ Yuklab olish**. Bot faylni Telegram chatga yuboradi |
+| Botda | `/arxiv` buyrug'i, keyin shahar yoki "Barcha shaharlar" tanlanadi |
+| Havola (CSV) | `https://SIZNING-DOMEN/api/archive.csv?key=nukus&days=365&lang=uz` |
+| Havola (JSON) | `https://SIZNING-DOMEN/api/archive?key=all&days=0` |
+
+`key`: shahar (`toshkent`, `nukus`, `samarqand`, …) yoki `all`. `days`: 30, 90, 365 yoki `0` (butun arxiv). `lang`: `uz`/`ru` (Excel uchun `;` va o'nlik vergul) yoki `en`.
+
+⚠️ **Arxiv yo'qolmasligi uchun Volume shart!** Volume'siz Railway har yangilanishda bazani o'chiradi. Model ma'lumotining so'nggi 92 kuni qayta tiklanadi, lekin undan eski kunlar va datchik o'lchovlari yo'qoladi:
+1. **chang-app** kartochkasi ustida o'ng tugma → **Attach Volume** → mount path: `/data`
+2. **Variables**: `DB_PATH` = `/data/chang_app.db`
+
 ## 📡 Haqiqiy datchiklar (ixtiyoriy, bepul)
 Ilova asosan sun'iy yo'ldosh modeli (Copernicus CAMS) ma'lumotini ko'rsatadi. Haqiqiy o'lchash stansiyalari ma'lumotini ham qo'shish mumkin (Toshkent va boshqa shaharlardagi datchiklar):
 1. https://aqicn.org/data-platform/token/ sahifasini oching, email kiriting va emailga kelgan **token**ni oling.
@@ -61,6 +82,7 @@ Railway'da `ADMIN_ID` o'zgaruvchisiga o'z Telegram ID raqamingizni yozing (@user
 | `db.py` | Foydalanuvchi sozlamalari va bo'ron rasmlari (SQLite) |
 | `risk.py` | Bo'ron xavfi indeksi |
 | `sensors.py` | Haqiqiy datchiklar (aqicn.org) |
+| `archive.py` | Har kungi ma'lumotlar arxivi va CSV eksport |
 | `mock_data.py` | Faqat sinov uchun soxta ma'lumot (`MOCK_DATA=1`) |
 
 ---

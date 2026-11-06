@@ -161,3 +161,77 @@ def recent_reports(hours: int = 48, limit: int = 60):
     since = (now_local() - timedelta(hours=hours)).isoformat(timespec="seconds")
     return conn.execute("SELECT * FROM reports WHERE status='approved' AND created>=? AND file_id IS NOT NULL "
                         "ORDER BY created DESC LIMIT ?", (since, limit)).fetchall()
+
+
+# ---------------- Arxiv: har kungi ma'lumotlar ----------------
+ARCHIVE_COLS = (
+    "pm10_mean", "pm10_max", "pm25_mean", "pm25_max", "dust_mean", "dust_max", "aod_mean", "aqi_max",
+    "o3_mean", "no2_mean", "so2_mean", "co_mean", "uv_max",
+    "temp_min", "temp_max", "rh_mean", "wind_max", "gust_max", "precip_sum", "risk",
+    "sensor_aqi", "sensor_pm25", "sensor_pm10", "sensor_n",
+)
+conn.executescript(f"""
+CREATE TABLE IF NOT EXISTS daily_obs (
+    city TEXT NOT NULL,
+    date TEXT NOT NULL,
+    {", ".join(c + " REAL" for c in ARCHIVE_COLS)},
+    updated TEXT,
+    PRIMARY KEY (city, date)
+);
+CREATE TABLE IF NOT EXISTS sensor_obs (
+    city TEXT NOT NULL,
+    time TEXT NOT NULL,
+    aqi REAL, pm25 REAL, pm10 REAL, station TEXT,
+    PRIMARY KEY (city, time)
+);
+""")
+conn.commit()
+
+
+def upsert_daily(city: str, date: str, values: dict):
+    """Kunlik yozuvni qo'shadi yoki yangilaydi (faqat berilgan ustunlar o'zgaradi)."""
+    vals = {k: v for k, v in values.items() if k in ARCHIVE_COLS}
+    if not vals:
+        return
+    cols = ", ".join(["city", "date", *vals, "updated"])
+    marks = ", ".join(["?"] * (len(vals) + 3))
+    sets = ", ".join(f"{k}=excluded.{k}" for k in [*vals, "updated"])
+    conn.execute(f"INSERT INTO daily_obs({cols}) VALUES({marks}) ON CONFLICT(city, date) DO UPDATE SET {sets}",
+                 (city, date, *vals.values(), _now()))
+
+
+def commit():
+    conn.commit()
+
+
+def archive_rows(city: str | None = None, since: str | None = None) -> list[dict]:
+    q, args = "SELECT * FROM daily_obs WHERE 1=1", []
+    if city:
+        q += " AND city=?"
+        args.append(city)
+    if since:
+        q += " AND date>=?"
+        args.append(since)
+    q += " ORDER BY city, date"
+    return [dict(r) for r in conn.execute(q, args).fetchall()]
+
+
+def archive_summary(city: str | None = None) -> dict:
+    q = "SELECT COUNT(*), MIN(date), MAX(date) FROM daily_obs" + (" WHERE city=?" if city else "")
+    n, first, last = conn.execute(q, (city,) if city else ()).fetchone()
+    return {"days": n, "first": first, "last": last}
+
+
+def add_sensor_obs(city: str, time: str, aqi, pm25, pm10, station: str):
+    conn.execute("INSERT OR REPLACE INTO sensor_obs(city, time, aqi, pm25, pm10, station) VALUES(?, ?, ?, ?, ?, ?)",
+                 (city, time, aqi, pm25, pm10, station))
+    conn.commit()
+
+
+def sensor_daily(city: str, date: str) -> dict | None:
+    r = conn.execute("SELECT AVG(aqi), AVG(pm25), AVG(pm10), COUNT(*) FROM sensor_obs WHERE city=? AND time LIKE ?",
+                     (city, date + "%")).fetchone()
+    if not r or not r[3]:
+        return None
+    rnd = lambda v: None if v is None else round(v, 1)  # noqa: E731
+    return {"sensor_aqi": rnd(r[0]), "sensor_pm25": rnd(r[1]), "sensor_pm10": rnd(r[2]), "sensor_n": r[3]}

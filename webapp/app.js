@@ -39,6 +39,9 @@
     history: null,
     historyFor: null,
     historyDays: 30,
+    histMetric: "pm10",
+    historySource: "live",
+    archiveSummary: null,
     reports: null,
     aralYear: 1960,
     photoBlob: null,
@@ -1027,19 +1030,42 @@
     if (state.mapMode === "sensors") g.addTo(state.map);
   }
 
-  // ---------------- Statistika ----------------
+  // ---------------- Statistika va ochiq arxiv ----------------
+  const METRICS = {
+    pm10: { label: () => "PM10", key: "pm10_mean", key2: "pm10_max", who: 45, unit: "µg/m³" },
+    pm25: { label: () => "PM2.5", key: "pm25_mean", key2: "pm25_max", color: "#e07a3a", who: 15, unit: "µg/m³" },
+    dust: { label: () => tr("dust"), key: "dust_mean", key2: "dust_max", color: "#a8794a", unit: "µg/m³" },
+    aqi: { label: () => "AQI", key: "aqi_max", color: "#8e4ec6", unit: "" },
+    temp: { label: () => tr("mTemp"), key: "temp_max", key2: "temp_min", color: "#f08a4b", color2: "#2c5aa8", unit: "°C" },
+    wind: { label: () => tr("wind"), key: "wind_max", key2: "gust_max", color: "#2c5aa8", unit: "m/s" },
+    risk: { label: () => tr("riskShort"), key: "risk", color: "#c63b4a", unit: "/100" },
+  };
+
   async function loadHistory() {
     const q = placeQuery();
     if (state.history && state.historyFor === q) return renderStats();
     state.history = null;
     renderStats();
-    try {
-      const r = await api("/api/history?" + q);
-      state.history = r.days;
-      state.historyFor = q;
-    } catch (e) { console.error(e); state.history = []; }
+    let rows = null, source = "live";
+    if (state.place.key) {
+      try {
+        const r = await api(`/api/archive?key=${encodeURIComponent(state.place.key)}&days=0`);
+        if (r.days.length >= 7) { rows = r.days; source = "archive"; state.archiveSummary = r.summary; }
+      } catch (e) { console.warn("archive", e); }
+    }
+    if (!rows) {  // arxiv yo'q (joylashuv yoki arxiv hali to'lmagan): so'nggi 92 kun
+      try {
+        const r = await api("/api/history?" + q);
+        rows = r.days.map((d) => ({ date: d.date, pm10_mean: d.mean, pm10_max: d.max, pm25_mean: d.pm25, dust_max: d.dust }));
+      } catch (e) { console.error(e); rows = []; }
+    }
+    state.history = rows;
+    state.historyFor = q;
+    state.historySource = source;
     renderStats();
   }
+
+  const periodRows = () => (state.historyDays ? state.history.slice(-state.historyDays) : state.history);
 
   function rankingHTML() {
     const ov = (state.overview || []).filter((o) => o.pm10 !== null && o.pm10 !== undefined).slice().sort((a, b) => a.pm10 - b.pm10);
@@ -1054,60 +1080,151 @@
 
   function historyHTML() {
     if (state.history === null) return `<div class="skeleton" style="height:260px"></div>`;
-    const days = state.history.slice(-state.historyDays);
+    const days = periodRows();
     if (!days.length) return `<p class="muted">${esc(tr("error"))}</p>`;
-    const avg = days.reduce((a, d) => a + d.mean, 0) / days.length;
-    const dusty = days.filter((d) => d.mean > 100).length;
-    const who = days.filter((d) => d.mean > 45).length;
-    const worst = days.reduce((a, d) => (d.max > a.max ? d : a), days[0]);
-    // Taqvim: dushanbadan boshlanadigan haftalar
+    const pm = days.filter((d) => d.pm10_mean !== null && d.pm10_mean !== undefined);
+    const avg = pm.reduce((a, d) => a + d.pm10_mean, 0) / Math.max(1, pm.length);
+    const dusty = pm.filter((d) => d.pm10_mean > 100).length;
+    const who = pm.filter((d) => d.pm10_mean > 45).length;
+    const worst = pm.reduce((a, d) => ((d.pm10_max || 0) > (a.pm10_max || 0) ? d : a), pm[0] || {});
     const firstDow = (new Date(days[0].date + "T12:00").getDay() + 6) % 7;
     let cells = '<i class="empty"></i>'.repeat(firstDow);
-    cells += days.map((d) => `<i title="${d.date}: ${fmt(d.mean)}" data-day="${d.date}" data-v="${fmt(d.mean)}" style="background:${levelColor(d.mean)}"></i>`).join("");
+    cells += days.map((d) => `<i data-day="${d.date}" style="background:${d.pm10_mean !== null && d.pm10_mean !== undefined ? levelColor(d.pm10_mean) : "var(--soft)"}"></i>`).join("");
     const legend = state.meta.levels.colors.map((c) => `<i style="background:${c}"></i>`).join("");
-    return `<div class="seg two" id="histSeg">
-        <button type="button" data-days="30" class="${state.historyDays === 30 ? "on" : ""}">${esc(tr("days30"))}</button>
-        <button type="button" data-days="90" class="${state.historyDays === 90 ? "on" : ""}">${esc(tr("days90"))}</button></div>
+    const periods = [[30, "days30"], [90, "days90"], [365, "days365"], [0, "daysAll"]];
+    const metricChips = Object.keys(METRICS).filter((k) => state.historySource === "archive" || ["pm10", "pm25", "dust"].includes(k))
+      .map((k) => `<button type="button" data-metric="${k}" class="${k === state.histMetric ? "on" : ""}">${esc(METRICS[k].label())}</button>`).join("");
+    return `<div class="seg four" id="histSeg">${periods.map(([d, k]) =>
+        `<button type="button" data-days="${d}" class="${state.historyDays === d ? "on" : ""}">${esc(tr(k))}</button>`).join("")}</div>
       <p class="small" style="margin:12px 0 0">${esc(tr("historySummary", { n: days.length, d: dusty }))}</p>
       <div class="tiles">
         <div class="tile"><div class="t-val" style="color:${levelColor(avg)}">${fmt(avg)}</div><div class="t-label">${esc(tr("avgPm"))}</div></div>
         <div class="tile"><div class="t-val">${dusty}</div><div class="t-label">${esc(tr("dustyDays"))}<br>${esc(tr("dustyDaysDesc"))}</div></div>
         <div class="tile"><div class="t-val">${who}</div><div class="t-label">${esc(tr("whoDays"))}<br>${esc(tr("whoDaysDesc"))}</div></div>
-        <div class="tile"><div class="t-val" style="color:${levelColor(worst.max)}">${fmt(worst.max)}</div><div class="t-label">${esc(tr("worstDay"))}<br>${esc(shortDate(worst.date))}</div></div>
+        <div class="tile day-link" data-day="${worst.date || ""}"><div class="t-val" style="color:${levelColor(worst.pm10_max)}">${fmt(worst.pm10_max)}</div>
+          <div class="t-label">${esc(tr("worstDay"))}<br>${worst.date ? esc(shortDate(worst.date)) : "—"} ›</div></div>
       </div>
-      <div class="muted small">${esc(tr("calendar"))}</div>
-      <div class="calendar" id="calendar">${cells}</div>
+      <div class="muted small">${esc(tr("calendar"))} · ${esc(tr("tapDay"))}</div>
+      <div class="calendar-wrap" id="calWrap"><div class="calendar" id="calendar">${cells}</div></div>
       <div class="cal-legend">${esc(tr("less"))} ${legend} ${esc(tr("more"))}</div>
-      <div class="chart-box tall" style="margin-top:12px"><canvas id="chartHist"></canvas></div>`;
+      <div class="chips" id="metricChips">${metricChips}</div>
+      <div class="chart-box tall"><canvas id="chartHist"></canvas></div>`;
+  }
+
+  function archiveHTML() {
+    const open = `<p class="muted small" style="margin:0 0 10px">${esc(tr("archiveOpen"))}</p>`;
+    let info;
+    if (state.historySource === "archive" && state.archiveSummary) {
+      const a = state.archiveSummary;
+      info = `<div class="archive-info"><div class="ai-num">${a.days}</div><div>${esc(tr("archiveInfo", { first: shortDate(a.first), last: shortDate(a.last) }))}</div></div>`;
+    } else {
+      info = `<p class="small" style="margin:0 0 10px">${esc(tr("archiveLive"))}</p>`;
+    }
+    const cityBtn = state.place.key
+      ? `<button type="button" class="primary-btn" id="dlCity">${esc(tr("dlCity", { place: placeName() }))}</button>` : "";
+    return `<h4>${esc(tr("archiveTitle"))}</h4>${info}${open}${cityBtn}
+      <button type="button" class="ghost-btn" id="dlAll">${esc(tr("dlAll"))}</button>
+      <p class="muted small" style="margin:10px 0 0">${esc(tr("archivePeriod", { p: state.historyDays ? tr(state.historyDays === 30 ? "days30" : state.historyDays === 90 ? "days90" : "days365") : tr("daysAll") }))}</p>`;
   }
 
   function drawHistoryChart() {
     if (!state.history || !state.history.length) return;
-    const days = state.history.slice(-state.historyDays);
+    const days = periodRows(), m = METRICS[state.histMetric] || METRICS.pm10;
+    const vals = days.map((d) => d[m.key] ?? null);
+    const many = days.length > 120;
+    const main = {
+      label: m.label() + (m.key2 ? (m.key.endsWith("_max") ? " (" + tr("max") + ")" : "") : ""),
+      data: vals, borderRadius: 3, borderWidth: many ? 1.5 : 0, pointRadius: 0, tension: .3,
+      backgroundColor: m.color ? m.color + (many ? "33" : "cc") : vals.map((v) => levelColor(v) + "dd"),
+      borderColor: m.color || "#d84315", fill: many,
+    };
+    const datasets = [main];
+    if (m.key2 && (state.histMetric === "temp" || state.histMetric === "wind")) {
+      datasets.push({ type: "line", label: state.histMetric === "temp" ? "min" : tr("gusts"), data: days.map((d) => d[m.key2] ?? null),
+        borderColor: m.color2 || "#64b5f6", borderWidth: 1.6, borderDash: [5, 4], pointRadius: 0, tension: .3 });
+    }
     makeChart("chartHist", {
-      type: "bar",
-      data: { labels: days.map((d) => shortDate(d.date)), datasets: [
-        { label: tr("dailyMean"), data: days.map((d) => d.mean), backgroundColor: days.map((d) => levelColor(d.mean)), borderRadius: 3 },
-      ] },
+      type: many ? "line" : "bar",
+      data: { labels: days.map((d) => shortDate(d.date)), datasets },
       options: baseOpts({
-        interaction: { mode: "index", intersect: false },
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: datasets.length > 1, labels: { boxWidth: 14, boxHeight: 2 } },
+          tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.parsed.y, 1)} ${m.unit}` } } },
         scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
-                  y: { beginAtZero: true, grid: { color: "rgba(127,127,127,.12)" } } },
+                  y: { beginAtZero: state.histMetric !== "temp", grid: { color: "rgba(127,127,127,.12)" } } },
+        onClick: (_e, els) => { if (els.length) openDay(days[els[0].index].date); },
       }),
-      plugins: [{
+      plugins: m.who ? [{
         id: "who",
         afterDatasetsDraw(chart) {
           const { ctx, chartArea: ca, scales: { y } } = chart;
-          const py = y.getPixelForValue(45);
+          const py = y.getPixelForValue(m.who);
           if (py < ca.top || py > ca.bottom) return;
           ctx.save(); ctx.strokeStyle = "#e53935"; ctx.setLineDash([5, 4]);
           ctx.beginPath(); ctx.moveTo(ca.left, py); ctx.lineTo(ca.right, py); ctx.stroke();
           ctx.fillStyle = "#e53935"; ctx.font = "11px " + Chart.defaults.font.family;
-          ctx.fillText(tr("whoLine"), ca.left + 4, py - 4); ctx.restore();
+          ctx.fillText(tr("whoShort", { v: m.who }), ca.left + 4, py - 4); ctx.restore();
         },
-      }],
+      }] : [],
     });
+  }
+
+  // ----- Kun tafsilotlari -----
+  function dayDetailHTML(d) {
+    const dt = new Date(d.date + "T12:00");
+    const row = (label, val) => `<div class="dl-row"><span class="muted">${esc(label)}</span><b>${val}</b></div>`;
+    const v = (x, dec = 0, unit = "") => (x === null || x === undefined ? "—" : `${fmt(x, dec)}${unit ? " " + unit : ""}`);
+    const pair = (a, b, unit, dec = 0) => `${v(a, dec)} / ${v(b, dec)}${unit ? " " + unit : ""}`;
+    const sensor = d.sensor_n
+      ? row(tr("dSensor") + " (" + tr("dSensorN", { n: d.sensor_n }) + ")", `AQI ${v(d.sensor_aqi)} · PM2.5 ${v(d.sensor_pm25)} · PM10 ${v(d.sensor_pm10)}`)
+      : row(tr("dSensor"), `<span class="muted">${esc(tr("dSensorNone"))}</span>`);
+    return `<h3>${esc(WEEKDAYS_LONG[state.lang][dt.getDay()])}, ${esc(shortDate(d.date))} ${d.date.slice(0, 4)}</h3>
+      <p class="muted small" style="margin:-6px 0 12px">📍 ${esc(placeName())}</p>
+      ${d.pm10_mean !== undefined && d.pm10_mean !== null ? `<div class="day-badge" style="--lc:${levelColor(d.pm10_mean)}">
+        <b>${fmt(d.pm10_mean)}</b><span>PM10 µg/m³ · ${esc(levelName(d.pm10_mean))}</span></div>` : ""}
+      <div class="dl-title">${esc(tr("airQuality"))} <span class="muted">(${esc(tr("dMean"))} / ${esc(tr("max"))})</span></div>
+      ${row("PM10", pair(d.pm10_mean, d.pm10_max, "µg/m³"))}
+      ${row("PM2.5", pair(d.pm25_mean, d.pm25_max, "µg/m³"))}
+      ${row(tr("dust"), pair(d.dust_mean, d.dust_max, "µg/m³"))}
+      ${row(tr("aod"), v(d.aod_mean, 2))}
+      ${row(tr("usAqi") + " (" + tr("max") + ")", v(d.aqi_max))}
+      ${row(tr("ozone"), v(d.o3_mean, 0, "µg/m³"))}${row("NO₂", v(d.no2_mean, 0, "µg/m³"))}
+      ${row("SO₂", v(d.so2_mean, 0, "µg/m³"))}${row("CO", v(d.co_mean, 0, "µg/m³"))}
+      ${row(tr("uv") + " (" + tr("max") + ")", v(d.uv_max, 1))}
+      <div class="dl-title">${esc(tr("weather"))}</div>
+      ${row(tr("mTemp") + " (min / " + tr("max") + ")", pair(d.temp_min, d.temp_max, "°C"))}
+      ${row(tr("humidity"), v(d.rh_mean, 0, "%"))}
+      ${row(tr("wind") + " / " + tr("gusts") + " (" + tr("max") + ")", pair(d.wind_max, d.gust_max, tr("ms")))}
+      ${row(tr("precip"), v(d.precip_sum, 1, tr("mm")))}
+      ${row(tr("riskShort"), d.risk === null || d.risk === undefined ? "—" : `<span style="color:${RISK_COLORS[d.risk < 25 ? 0 : d.risk < 50 ? 1 : d.risk < 75 ? 2 : 3]}">${fmt(d.risk)}/100</span>`)}
+      ${sensor}`;
+  }
+
+  function openDay(date) {
+    const d = (state.history || []).find((x) => x.date === date);
+    if (!d) return;
+    haptic();
+    $("#dayContent").innerHTML = dayDetailHTML(d);
+    openSheet("daySheet", true);
+  }
+
+  async function downloadArchive(all) {
+    const key = all ? "all" : state.place.key;
+    if (!key) return;
+    const days = state.historyDays;
+    const url = `${location.origin}/api/archive.csv?key=${encodeURIComponent(key)}&days=${days}&lang=${state.lang}`;
+    haptic("light");
+    if (inTelegram) {
+      try {  // eng ishonchli: bot faylni chatga yuboradi
+        await api("/api/archive/send", { method: "POST", body: JSON.stringify({ key, days, lang: state.lang }) });
+        haptic("success");
+        return toast(tr("archiveSent"));
+      } catch (e) { console.warn("send", e); }
+      try { if (tg.downloadFile) return tg.downloadFile({ url, file_name: `chang_arxiv_${key}.csv` }); } catch { /* eski versiya */ }
+      return tg.openLink(url);
+    }
+    const a = document.createElement("a");
+    a.href = url; a.download = "";
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   // Orol dengizi: sxematik suv havzalari (har yil uchun)
@@ -1146,10 +1263,13 @@
     $("#view-stats").innerHTML =
       `<div class="card"><h4>${esc(tr("ranking"))}</h4>${rankingHTML()}</div>
        <div class="card"><h4>${esc(tr("history"))} · ${esc(placeName())}</h4>${historyHTML()}</div>
+       ${state.history !== null ? `<div class="card" id="archiveCard">${archiveHTML()}</div>` : ""}
        <div class="card" id="aralCard">${aralHTML()}</div>
        <p class="footer-note">${esc(tr("source"))}</p>`;
     decorateHeads($("#view-stats"));
     drawHistoryChart();
+    const cw = $("#calWrap");
+    if (cw) cw.scrollLeft = cw.scrollWidth;
   }
 
   // ---------------- Sozlamalar ----------------
@@ -1398,10 +1518,16 @@
       if (e.target.closest("#openReport")) { haptic(); openReportSheet(); }
       const hd = e.target.closest("#histSeg button[data-days]");
       if (hd) { haptic(); state.historyDays = +hd.dataset.days; renderStats(); }
+      const mc = e.target.closest("#metricChips button[data-metric]");
+      if (mc) { haptic(); state.histMetric = mc.dataset.metric; document.querySelectorAll("#metricChips button").forEach((b) => b.classList.toggle("on", b === mc)); drawHistoryChart(); }
+      const dl = e.target.closest(".day-link[data-day]");
+      if (dl && dl.dataset.day) openDay(dl.dataset.day);
+      if (e.target.closest("#dlCity")) downloadArchive(false);
+      if (e.target.closest("#dlAll")) downloadArchive(true);
       const y = e.target.closest("#aralYears button[data-year]");
       if (y) { haptic(); state.aralYear = +y.dataset.year; $("#aralCard").innerHTML = aralHTML(); decorateHeads($("#view-stats")); }
       const cell = e.target.closest("#calendar i[data-day]");
-      if (cell) toast(shortDate(cell.dataset.day) + " · PM10 " + cell.dataset.v + " µg/m³");
+      if (cell) openDay(cell.dataset.day);
     });
     document.addEventListener("change", (e) => {
       if (e.target.id === "tAlerts") { haptic(); saveSettings({ alerts: e.target.checked }); }

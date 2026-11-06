@@ -36,6 +36,7 @@ from aiogram.utils.web_app import safe_parse_webapp_init_data  # noqa: E402
 from aiohttp import web  # noqa: E402
 
 import api  # noqa: E402
+import archive  # noqa: E402
 import db  # noqa: E402
 import sensors  # noqa: E402
 from risk import storm_risk  # noqa: E402
@@ -83,6 +84,7 @@ if MOCK:
     for _name in ("get_air", "get_weather", "get_air_many", "get_weather_many", "get_history", "get_grid"):
         setattr(api, _name, getattr(mock_data, _name))
     sensors.nearest, sensors.in_bounds = mock_data.sensor_nearest, mock_data.sensor_bounds
+    archive.fetch_many = mock_data.archive_fetch_many
     WAQI_TOKEN = WAQI_TOKEN or "mock"
 
 
@@ -171,6 +173,7 @@ async def h_meta(request):
         "bot_ready": bool(TOKEN),
         "moderated": bool(ADMIN_ID),
         "sensors": bool(WAQI_TOKEN),
+        "archive": db.archive_summary(),
     })
 
 
@@ -325,6 +328,66 @@ async def h_sensors(request):
         return web.json_response({"stations": []})
 
 
+# ---------------- API: ochiq arxiv ----------------
+def _archive_args(q):
+    city = q.get("key") if q.get("key") in CITIES else None
+    if q.get("key") and q.get("key") != "all" and not city:
+        raise web.HTTPBadRequest(text="noma'lum shahar")
+    try:
+        days = int(q.get("days") or 0)
+    except ValueError:
+        days = 0
+    lang = q.get("lang") if q.get("lang") in LANGS else "uz"
+    return city, archive.since_date(days), lang
+
+
+async def h_archive(request):
+    """JSON: ?key=nukus (yoki key=all) &days=365 (0 = butun arxiv)."""
+    city, since, _ = _archive_args(request.query)
+    return web.json_response({"city": city or "all", "summary": db.archive_summary(city),
+                              "days": db.archive_rows(city, since)})
+
+
+async def h_archive_csv(request):
+    """CSV (Excel): istalgan odam yuklab olishi mumkin."""
+    city, since, lang = _archive_args(request.query)
+    body = archive.to_csv(db.archive_rows(city, since), lang)
+    name = archive.csv_filename(city, since)
+    return web.Response(body=body, content_type="text/csv", charset="utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-cache"})
+
+
+async def h_archive_send(request):
+    """Ilova ichidan: bot CSV faylni foydalanuvchining Telegram chatiga yuboradi."""
+    user = init_user(request)
+    if not user:
+        raise web.HTTPUnauthorized(text="telegram only")
+    bot: Bot | None = request.app.get("bot")
+    if not bot:
+        raise web.HTTPServiceUnavailable(text="bot off")
+    body = await request.json()
+    city, since, lang = _archive_args(body)
+    ok = await send_archive_file(bot, user["id"], city, since, lang)
+    if not ok:
+        raise web.HTTPBadGateway(text="telegram error")
+    return web.json_response({"ok": True})
+
+
+async def send_archive_file(bot: Bot, chat_id: int, city, since, lang) -> bool:
+    rows = db.archive_rows(city, since)
+    data = archive.to_csv(rows, lang)
+    s = db.archive_summary(city)
+    place = archive.city_label(city, lang) if city else T[lang].get("arch_all", "")
+    cap = ARCH_T[lang]["caption"].format(place=place or ARCH_T[lang]["all"], n=len(rows),
+                                          first=s["first"] or "—", last=s["last"] or "—")
+    try:
+        await bot.send_document(chat_id, BufferedInputFile(data, archive.csv_filename(city, since)), caption=cap)
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.warning("Arxiv fayli yuborilmadi %s: %s", chat_id, e)
+        return False
+
+
 # ---------------- API: foydalanuvchi sozlamalari ----------------
 async def h_me_get(request):
     user = init_user(request)
@@ -468,6 +531,9 @@ def make_web_app(bot: Bot | None = None) -> web.Application:
     app.router.add_get("/api/grid", h_grid)
     app.router.add_get("/api/history", h_history)
     app.router.add_get("/api/sensor", h_sensor)
+    app.router.add_get("/api/archive", h_archive)
+    app.router.add_get("/api/archive.csv", h_archive_csv)
+    app.router.add_post("/api/archive/send", h_archive_send)
     app.router.add_get("/api/sensors", h_sensors)
     app.router.add_get("/api/me", h_me_get)
     app.router.add_post("/api/me", h_me_post)
@@ -518,6 +584,26 @@ BOT_T = {
 }
 
 
+ARCH_T = {
+    "uz": {"choose": "🗄 <b>Ma'lumotlar arxivi</b>\nQaysi shahar ma'lumotini yuklab olasiz? Fayl Excel'da ochiladi (CSV).",
+           "all": "Barcha shaharlar", "caption": "🗄 {place}: {n} qator\n📅 {first} — {last}\nManba: Open-Meteo / Copernicus CAMS, aqicn.org",
+           "empty": "Arxiv hali to'planmoqda, birozdan keyin urinib ko'ring.", "sending": "Fayl tayyorlanmoqda…"},
+    "ru": {"choose": "🗄 <b>Архив данных</b>\nДанные какого города скачать? Файл открывается в Excel (CSV).",
+           "all": "Все города", "caption": "🗄 {place}: {n} строк\n📅 {first} — {last}\nИсточник: Open-Meteo / Copernicus CAMS, aqicn.org",
+           "empty": "Архив ещё собирается, попробуйте чуть позже.", "sending": "Готовлю файл…"},
+    "en": {"choose": "🗄 <b>Data archive</b>\nWhich city's data do you want? The file opens in Excel (CSV).",
+           "all": "All cities", "caption": "🗄 {place}: {n} rows\n📅 {first} — {last}\nSource: Open-Meteo / Copernicus CAMS, aqicn.org",
+           "empty": "The archive is still being collected, please try again later.", "sending": "Preparing the file…"},
+}
+
+
+def archive_kb(lang: str) -> InlineKeyboardMarkup:
+    items = [InlineKeyboardButton(text=archive.city_label(k, lang), callback_data=f"arch:{k}") for k in CITIES]
+    rows = [[InlineKeyboardButton(text="🌍 " + ARCH_T[lang]["all"], callback_data="arch:all")]]
+    rows += [items[i:i + 3] for i in range(0, len(items), 3)]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def bt(lang, key, **kw):
     s = BOT_T.get(lang, BOT_T["uz"])[key]
     return s.format(**kw) if kw else s
@@ -563,6 +649,23 @@ async def cmd_start(m: Message, bot: Bot):
             text=bt(lang, "open")[2:], web_app=WebAppInfo(url=WEBAPP_URL)))
     except Exception as e:  # noqa: BLE001
         log.warning("Menyu tugmasi: %s", e)
+
+
+@dp.message(Command("arxiv", "archive"))
+async def cmd_archive(m: Message):
+    lang = user_lang(m.from_user.id, m.from_user.language_code)
+    await m.answer(ARCH_T[lang]["choose"], reply_markup=archive_kb(lang))
+
+
+@dp.callback_query(F.data.startswith("arch:"))
+async def on_archive(c: CallbackQuery, bot: Bot):
+    lang = user_lang(c.from_user.id, c.from_user.language_code)
+    key = c.data.split(":", 1)[1]
+    city = key if key in CITIES else None
+    if db.archive_summary(city)["days"] == 0:
+        return await c.answer(ARCH_T[lang]["empty"], show_alert=True)
+    await c.answer(ARCH_T[lang]["sending"])
+    await send_archive_file(bot, c.from_user.id, city, None, lang)
 
 
 @dp.message(Command("stat"))
@@ -683,12 +786,33 @@ async def scheduler(bot: Bot):
 
 async def setup_bot(bot: Bot):
     await bot.set_my_commands([BotCommand(command="start", description="Chang Monitor ilovasi"),
+                               BotCommand(command="arxiv", description="Ma'lumotlar arxivini yuklab olish (Excel)"),
                                BotCommand(command="help", description="Yordam")])
     if WEBAPP_URL:
         await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Ilova", web_app=WebAppInfo(url=WEBAPP_URL)))
         log.info("Ilova manzili: %s", WEBAPP_URL)
     else:
         log.warning("WEBAPP_URL yo'q! Railway'da Settings → Networking → Generate Domain qiling.")
+
+
+async def archive_loop():
+    """Arxivni to'ldiradi va yangilab boradi (bot bo'lmasa ham ishlaydi)."""
+    await asyncio.sleep(3)
+    try:
+        await archive.run(past_days=92 if archive.needs_backfill() else 3)
+    except Exception:  # noqa: BLE001
+        log.exception("Arxivni to'ldirishda xato")
+    while True:
+        now = datetime.now(TZ)
+        nxt = (now + timedelta(hours=1)).replace(minute=7, second=0, microsecond=0)
+        await asyncio.sleep((nxt - now).total_seconds())
+        try:
+            if WAQI_TOKEN:
+                await archive.collect_sensors(sensors.nearest, WAQI_TOKEN)
+            if nxt.hour in (0, 6):  # yarim tunda va ertalab so'nggi kunlarni qayta hisoblaymiz
+                await archive.run(past_days=92 if archive.needs_backfill() else 3)
+        except Exception:  # noqa: BLE001
+            log.exception("Arxiv xatosi")
 
 
 # ---------------- Ishga tushirish ----------------
@@ -698,6 +822,7 @@ async def main():
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
     log.info("Veb-server %s-portda ishga tushdi", PORT)
+    asyncio.create_task(archive_loop())
 
     if not bot:
         log.warning("BOT_TOKEN yo'q: faqat veb-ilova ishlaydi (bot o'chiq).")

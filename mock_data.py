@@ -130,3 +130,37 @@ async def sensor_bounds(token):
             {"lat": 39.65, "lon": 66.96, "aqi": 55, "name": "Samarkand", "time": ""},
             {"lat": 40.38, "lon": 71.78, "aqi": 121, "name": "Fergana", "time": ""},
             {"lat": 43.24, "lon": 76.89, "aqi": 160, "name": "Almaty (KZ)", "time": ""}]
+
+
+async def archive_fetch_many(lats, lons, past_days):
+    """Arxiv sinovi uchun: o'tgan kunlarning soatlik ma'lumoti."""
+    now = datetime.now(TZ).replace(minute=0, second=0, microsecond=0, tzinfo=None)
+    start = (now - timedelta(days=past_days)).replace(hour=0)
+    hours = (past_days + 1) * 24
+    times = [(start + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M") for h in range(hours)]
+    air, wx = [], []
+    for la, lo in zip(lats, lons):
+        r = _seed(la, lo)
+        storm = {r.randint(0, past_days - 1) for _ in range(max(1, past_days // 10))}
+        pm = []
+        for h in range(hours):
+            d = h // 24
+            base = 40 + 25 * math.sin(d / 9) + (_storm(la, lo) * 0.9 if d in storm else 0)
+            pm.append(max(5, round(base + 15 * math.sin(h / 4) + r.uniform(-8, 8), 1)))
+        air.append({"hourly": {"time": times, "pm10": pm, "pm2_5": [round(v * 0.27, 1) for v in pm],
+                               "dust": [round(v * 0.7, 1) for v in pm],
+                               "aerosol_optical_depth": [round(0.15 + v / 700, 3) for v in pm],
+                               "us_aqi": [round(min(500, v * 0.9 + 15)) for v in pm],
+                               "ozone": [round(60 + 25 * math.sin(h / 24 * 6.28)) for h in range(hours)],
+                               "nitrogen_dioxide": [round(15 + 8 * math.sin(h / 5)) for h in range(hours)],
+                               "sulphur_dioxide": [round(4 + 2 * math.sin(h / 7)) for h in range(hours)],
+                               "carbon_monoxide": [round(220 + 60 * math.sin(h / 6)) for h in range(hours)],
+                               "uv_index": [max(0, round(5 * math.sin(((h % 24) - 6) / 12 * 3.14), 1)) for h in range(hours)]}})
+        wx.append({"hourly": {"time": times,
+                              "temperature_2m": [round(14 + 8 * math.sin(((h % 24) - 9) / 24 * 6.28) - (h // 24) * 0.1, 1) for h in range(hours)],
+                              "relative_humidity_2m": [round(45 + 20 * math.cos(h / 24 * 6.28)) for h in range(hours)],
+                              "wind_speed_10m": [round(4 + 3 * abs(math.sin(h / 11)), 1) for h in range(hours)],
+                              "wind_gusts_10m": [round(7 + 6 * abs(math.sin(h / 11)), 1) for h in range(hours)],
+                              "precipitation": [0.3 if (h // 24) % 9 == 0 and h % 24 in (14, 15, 16) else 0.0 for h in range(hours)],
+                              "soil_moisture_0_to_1cm": [0.1] * hours}})
+    return air, wx
