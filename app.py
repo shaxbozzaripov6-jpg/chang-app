@@ -37,6 +37,7 @@ from aiohttp import web  # noqa: E402
 
 import api  # noqa: E402
 import archive  # noqa: E402
+import history  # noqa: E402
 import db  # noqa: E402
 import sensors  # noqa: E402
 from risk import storm_risk  # noqa: E402
@@ -46,7 +47,8 @@ from texts import (ALERT_DUST, ALERT_PM10, CITIES, CITY_EN, LANGS, LEVEL_COLORS,
                    WIND_GUST_WARN, city_name, level, t)
 
 TOKEN = os.getenv("BOT_TOKEN", "")
-WAQI_TOKEN = os.getenv("WAQI_TOKEN", "").strip()  # aqicn.org bepul tokeni (haqiqiy datchiklar)
+WAQI_TOKEN = os.getenv("WAQI_TOKEN", "").strip()
+ADS_KEY = os.getenv("ADS_KEY", "").strip()  # Copernicus ADS kaliti: 2015–2021 chang arxivi uchun  # aqicn.org bepul tokeni (haqiqiy datchiklar)
 def _int_env(name: str) -> int:
     """Raqamli o'zgaruvchi. Noto'g'ri yozilsa (masalan, @username) dastur to'xtamaydi."""
     raw = (os.getenv(name) or "").strip()
@@ -85,6 +87,11 @@ if MOCK:
         setattr(api, _name, getattr(mock_data, _name))
     sensors.nearest, sensors.in_bounds = mock_data.sensor_nearest, mock_data.sensor_bounds
     archive.fetch_many = mock_data.archive_fetch_many
+    history.fetch_weather_daily = mock_data.history_weather_daily
+    history.fetch_air_range = mock_data.history_air_range
+    history._eac4_year = mock_data.history_eac4_year
+    ADS_KEY = ADS_KEY or "mock"
+    os.environ.setdefault("ADS_KEY", ADS_KEY)
     WAQI_TOKEN = WAQI_TOKEN or "mock"
 
 
@@ -174,6 +181,7 @@ async def h_meta(request):
         "moderated": bool(ADMIN_ID),
         "sensors": bool(WAQI_TOKEN),
         "archive": db.archive_summary(),
+        "history": history.status(),
     })
 
 
@@ -338,21 +346,39 @@ def _archive_args(q):
     except ValueError:
         days = 0
     lang = q.get("lang") if q.get("lang") in LANGS else "uz"
-    return city, archive.since_date(days), lang
+    since, until = archive.since_date(days), None
+    # from/to: "2015" yoki "2015-01-01" ko'rinishida
+    for name in ("from", "to"):
+        v = str(q.get(name) or "").strip()
+        if not v:
+            continue
+        if len(v) == 4 and v.isdigit():
+            v = f"{v}-01-01" if name == "from" else f"{v}-12-31"
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise web.HTTPBadRequest(text=f"{name}: YYYY yoki YYYY-MM-DD")
+        if name == "from":
+            since = v
+        else:
+            until = v
+    return city, since, until, lang
 
 
 async def h_archive(request):
     """JSON: ?key=nukus (yoki key=all) &days=365 (0 = butun arxiv)."""
-    city, since, _ = _archive_args(request.query)
-    return web.json_response({"city": city or "all", "summary": db.archive_summary(city),
-                              "days": db.archive_rows(city, since)})
+    city, since, until, _ = _archive_args(request.query)
+    resp = web.json_response({"city": city or "all", "summary": db.archive_summary(city),
+                              "days": db.archive_rows(city, since, until)})
+    resp.enable_compression()
+    return resp
 
 
 async def h_archive_csv(request):
     """CSV (Excel): istalgan odam yuklab olishi mumkin."""
-    city, since, lang = _archive_args(request.query)
-    body = archive.to_csv(db.archive_rows(city, since), lang)
-    name = archive.csv_filename(city, since)
+    city, since, until, lang = _archive_args(request.query)
+    body = archive.to_csv(db.archive_rows(city, since, until), lang)
+    name = archive.csv_filename(city, since, until)
     return web.Response(body=body, content_type="text/csv", charset="utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-cache"})
 
@@ -366,22 +392,24 @@ async def h_archive_send(request):
     if not bot:
         raise web.HTTPServiceUnavailable(text="bot off")
     body = await request.json()
-    city, since, lang = _archive_args(body)
-    ok = await send_archive_file(bot, user["id"], city, since, lang)
+    city, since, until, lang = _archive_args(body)
+    ok = await send_archive_file(bot, user["id"], city, since, lang, until)
     if not ok:
         raise web.HTTPBadGateway(text="telegram error")
     return web.json_response({"ok": True})
 
 
-async def send_archive_file(bot: Bot, chat_id: int, city, since, lang) -> bool:
-    rows = db.archive_rows(city, since)
+async def send_archive_file(bot: Bot, chat_id: int, city, since, lang, until=None) -> bool:
+    rows = db.archive_rows(city, since, until)
     data = archive.to_csv(rows, lang)
-    s = db.archive_summary(city)
+    s = {"first": rows[0]["date"] if rows else None, "last": rows[-1]["date"] if rows else None}
+    if city is None and rows:
+        s = {"first": min(r["date"] for r in rows), "last": max(r["date"] for r in rows)}
     place = archive.city_label(city, lang) if city else T[lang].get("arch_all", "")
     cap = ARCH_T[lang]["caption"].format(place=place or ARCH_T[lang]["all"], n=len(rows),
                                           first=s["first"] or "—", last=s["last"] or "—")
     try:
-        await bot.send_document(chat_id, BufferedInputFile(data, archive.csv_filename(city, since)), caption=cap)
+        await bot.send_document(chat_id, BufferedInputFile(data, archive.csv_filename(city, since, until)), caption=cap)
         return True
     except Exception as e:  # noqa: BLE001
         log.warning("Arxiv fayli yuborilmadi %s: %s", chat_id, e)
@@ -802,6 +830,8 @@ async def archive_loop():
         await archive.run(past_days=92 if archive.needs_backfill() else 3)
     except Exception:  # noqa: BLE001
         log.exception("Arxivni to'ldirishda xato")
+    # 2015 yildan boshlab tarixiy ma'lumotlarni fonda yuklash (qolgan joyidan davom etadi)
+    asyncio.create_task(history.run_all(ADS_KEY))
     while True:
         now = datetime.now(TZ)
         nxt = (now + timedelta(hours=1)).replace(minute=7, second=0, microsecond=0)

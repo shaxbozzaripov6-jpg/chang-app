@@ -169,6 +169,7 @@ ARCHIVE_COLS = (
     "o3_mean", "no2_mean", "so2_mean", "co_mean", "uv_max",
     "temp_min", "temp_max", "rh_mean", "wind_max", "gust_max", "precip_sum", "risk",
     "sensor_aqi", "sensor_pm25", "sensor_pm10", "sensor_n",
+    "dust_aod", "soil_mean",
 )
 conn.executescript(f"""
 CREATE TABLE IF NOT EXISTS daily_obs (
@@ -185,12 +186,37 @@ CREATE TABLE IF NOT EXISTS sensor_obs (
     PRIMARY KEY (city, time)
 );
 """)
+# Migratsiya: yangi ustunlar va import holati jadvali
+_have = {r["name"] for r in conn.execute("PRAGMA table_info(daily_obs)")}
+for _c in ARCHIVE_COLS:
+    if _c not in _have:
+        conn.execute(f"ALTER TABLE daily_obs ADD COLUMN {_c} REAL")
+if "src" not in _have:
+    conn.execute("ALTER TABLE daily_obs ADD COLUMN src TEXT")
+conn.execute("""CREATE TABLE IF NOT EXISTS import_state (
+    name TEXT PRIMARY KEY, status TEXT, detail TEXT, updated TEXT)""")
 conn.commit()
+
+
+def set_import(name: str, status: str, detail: str = ""):
+    conn.execute("INSERT OR REPLACE INTO import_state(name, status, detail, updated) VALUES(?, ?, ?, ?)",
+                 (name, status, detail, _now()))
+    conn.commit()
+
+
+def get_import(name: str) -> str | None:
+    r = conn.execute("SELECT status FROM import_state WHERE name=?", (name,)).fetchone()
+    return r[0] if r else None
+
+
+def imports() -> dict:
+    return {r["name"]: {"status": r["status"], "detail": r["detail"]}
+            for r in conn.execute("SELECT * FROM import_state ORDER BY name")}
 
 
 def upsert_daily(city: str, date: str, values: dict):
     """Kunlik yozuvni qo'shadi yoki yangilaydi (faqat berilgan ustunlar o'zgaradi)."""
-    vals = {k: v for k, v in values.items() if k in ARCHIVE_COLS}
+    vals = {k: v for k, v in values.items() if k in ARCHIVE_COLS or k == "src"}
     if not vals:
         return
     cols = ", ".join(["city", "date", *vals, "updated"])
@@ -204,7 +230,7 @@ def commit():
     conn.commit()
 
 
-def archive_rows(city: str | None = None, since: str | None = None) -> list[dict]:
+def archive_rows(city: str | None = None, since: str | None = None, until: str | None = None) -> list[dict]:
     q, args = "SELECT * FROM daily_obs WHERE 1=1", []
     if city:
         q += " AND city=?"
@@ -212,14 +238,26 @@ def archive_rows(city: str | None = None, since: str | None = None) -> list[dict
     if since:
         q += " AND date>=?"
         args.append(since)
+    if until:
+        q += " AND date<=?"
+        args.append(until)
     q += " ORDER BY city, date"
     return [dict(r) for r in conn.execute(q, args).fetchall()]
 
 
 def archive_summary(city: str | None = None) -> dict:
-    q = "SELECT COUNT(*), MIN(date), MAX(date) FROM daily_obs" + (" WHERE city=?" if city else "")
-    n, first, last = conn.execute(q, (city,) if city else ()).fetchone()
-    return {"days": n, "first": first, "last": last}
+    w = " WHERE city=?" if city else ""
+    args = (city,) if city else ()
+    n, first, last = conn.execute("SELECT COUNT(*), MIN(date), MAX(date) FROM daily_obs" + w, args).fetchone()
+    pm_first = conn.execute("SELECT MIN(date) FROM daily_obs" + (w + " AND" if w else " WHERE") + " pm10_mean IS NOT NULL",
+                            args).fetchone()[0]
+    return {"days": n, "first": first, "last": last, "pm_first": pm_first}
+
+
+def rows_missing_risk() -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT city, date, gust_max, soil_mean, rh_mean, precip_sum, dust_max, pm10_max FROM daily_obs "
+        "WHERE risk IS NULL AND gust_max IS NOT NULL").fetchall()]
 
 
 def add_sensor_obs(city: str, time: str, aqi, pm25, pm10, station: str):

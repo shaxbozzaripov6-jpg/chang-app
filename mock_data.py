@@ -164,3 +164,55 @@ async def archive_fetch_many(lats, lons, past_days):
                               "precipitation": [0.3 if (h // 24) % 9 == 0 and h % 24 in (14, 15, 16) else 0.0 for h in range(hours)],
                               "soil_moisture_0_to_1cm": [0.1] * hours}})
     return air, wx
+
+
+async def history_weather_daily(start, end):
+    d0 = datetime.strptime(start, "%Y-%m-%d"); d1 = datetime.strptime(end, "%Y-%m-%d")
+    days = [(d0 + timedelta(days=i)) for i in range((d1 - d0).days + 1)]
+    out = []
+    for k in range(14):
+        t = [d.strftime("%Y-%m-%d") for d in days]
+        season = [math.sin((d.timetuple().tm_yday - 105) / 365 * 6.283) for d in days]
+        out.append({"daily": {"time": t,
+            "temperature_2m_max": [round(18 + 17 * s + k * 0.2, 1) for s in season],
+            "temperature_2m_min": [round(5 + 14 * s, 1) for s in season],
+            "precipitation_sum": [round(max(0, -s) * 2 if d.day % 6 == 0 else 0, 1) for s, d in zip(season, days)],
+            "wind_speed_10m_max": [round(5 + 4 * abs(math.sin(d.toordinal() / 5)), 1) for d in days],
+            "wind_gusts_10m_max": [round(9 + 9 * abs(math.sin(d.toordinal() / 5)), 1) for d in days],
+            "relative_humidity_2m_mean": [round(55 - 25 * s) for s in season],
+            "soil_moisture_0_to_7cm_mean": [round(0.2 - 0.12 * s, 3) for s in season]}})
+    return out
+
+
+async def history_air_range(start, end):
+    if start < "2022-01-01":
+        raise RuntimeError("400, message='Bad Request'")
+    past = (datetime.strptime(end, "%Y-%m-%d") - datetime.strptime(start, "%Y-%m-%d")).days + 1
+    air, _ = await archive_fetch_many(_GRID_LATS, _GRID_LONS, past)
+    # vaqtlarni so'ralgan davrga siljitamiz
+    d0 = datetime.strptime(start, "%Y-%m-%d")
+    for a in air:
+        n = len(a["hourly"]["time"])
+        a["hourly"]["time"] = [(d0 + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M") for h in range(n)]
+    return air
+
+
+_GRID_LATS = [41.311, 42.46, 43.768, 41.55, 39.768, 40.084, 39.654, 38.861, 37.224, 40.116, 40.49, 40.998, 40.783, 40.384]
+_GRID_LONS = [69.24, 59.603, 59.022, 60.631, 64.421, 65.379, 66.959, 65.789, 67.278, 67.842, 68.784, 71.672, 72.344, 71.784]
+
+
+def history_eac4_year(year, key):
+    from texts import CITIES
+    out = {}
+    d = datetime(year, 1, 1)
+    while d.year == year:
+        season = math.sin((d.timetuple().tm_yday - 105) / 365 * 6.283)
+        for k, (_, _, la, lo) in CITIES.items():
+            west = 2.2 if lo < 62 else 1.0
+            storm = 3 if (d.toordinal() + int(lo)) % 23 == 0 else 1
+            pm10 = round((45 + 30 * max(0, season)) * west * storm + (year - 2015) * 1.5, 1)
+            out[(k, d.strftime("%Y-%m-%d"))] = {"pm10_mean": pm10, "pm10_max": round(pm10 * 1.6, 1),
+                "pm25_mean": round(pm10 * 0.3, 1), "pm25_max": round(pm10 * 0.45, 1),
+                "aod_mean": round(0.2 + pm10 / 500, 3), "dust_aod": round(0.08 + pm10 / 900, 3), "src": "cams-eac4"}
+        d += timedelta(days=1)
+    return out

@@ -97,6 +97,7 @@ async def run(past_days: int = 3) -> int:
             sensor = db.sensor_daily(key, day)
             if sensor:
                 vals.update(sensor)
+            vals["src"] = "open-meteo"
             db.upsert_daily(key, day, vals)
             n += 1
     db.commit()
@@ -126,15 +127,18 @@ CSV_HEADERS = {
     "uz": ["Shahar", "Sana", "PM10 o'rtacha", "PM10 maks", "PM2.5 o'rtacha", "PM2.5 maks", "Chang o'rtacha", "Chang maks",
            "Aerozol (AOD)", "AQI maks (AQSH)", "Ozon O3", "NO2", "SO2", "CO", "UV maks",
            "Harorat min °C", "Harorat maks °C", "Namlik %", "Shamol maks m/s", "Shiddat maks m/s", "Yog'in mm",
-           "Bo'ron xavfi (0-100)", "Datchik AQI", "Datchik PM2.5", "Datchik PM10", "Datchik o'lchovlari soni"],
+           "Bo'ron xavfi (0-100)", "Datchik AQI", "Datchik PM2.5", "Datchik PM10", "Datchik o'lchovlari soni",
+           "Chang aerozoli (AOD)", "Tuproq namligi (m3/m3)", "Manba"],
     "ru": ["Город", "Дата", "PM10 среднее", "PM10 макс", "PM2.5 среднее", "PM2.5 макс", "Пыль среднее", "Пыль макс",
            "Аэрозоль (AOD)", "AQI макс (США)", "Озон O3", "NO2", "SO2", "CO", "УФ макс",
            "Темп. мин °C", "Темп. макс °C", "Влажность %", "Ветер макс м/с", "Порывы макс м/с", "Осадки мм",
-           "Риск бури (0-100)", "Датчик AQI", "Датчик PM2.5", "Датчик PM10", "Число измерений датчика"],
+           "Риск бури (0-100)", "Датчик AQI", "Датчик PM2.5", "Датчик PM10", "Число измерений датчика",
+           "Пылевой аэрозоль (AOD)", "Влажность почвы (м3/м3)", "Источник"],
     "en": ["City", "Date", "PM10 mean", "PM10 max", "PM2.5 mean", "PM2.5 max", "Dust mean", "Dust max",
            "Aerosol (AOD)", "AQI max (US)", "Ozone O3", "NO2", "SO2", "CO", "UV max",
            "Temp min °C", "Temp max °C", "Humidity %", "Wind max m/s", "Gust max m/s", "Precipitation mm",
-           "Storm risk (0-100)", "Sensor AQI", "Sensor PM2.5", "Sensor PM10", "Sensor readings"],
+           "Storm risk (0-100)", "Sensor AQI", "Sensor PM2.5", "Sensor PM10", "Sensor readings",
+           "Dust aerosol (AOD)", "Soil moisture (m3/m3)", "Source"],
 }
 
 
@@ -161,13 +165,13 @@ def to_csv(rows: list[dict], lang: str = "uz") -> bytes:
         return str(v).replace(".", ",") if comma_decimal else str(v)
 
     for r in rows:
-        w.writerow([city_label(r["city"], lang), r["date"], *[cell(r, c) for c in db.ARCHIVE_COLS]])
+        w.writerow([city_label(r["city"], lang), r["date"], *[cell(r, c) for c in db.ARCHIVE_COLS], r.get("src") or "open-meteo"])
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
-def csv_filename(city: str | None, since: str | None) -> str:
-    today = datetime.now(TZ).strftime("%Y-%m-%d")
-    return f"chang_arxiv_{city or 'barcha_shaharlar'}_{since or 'boshidan'}_{today}.csv"
+def csv_filename(city: str | None, since: str | None, until: str | None = None) -> str:
+    end = until or datetime.now(TZ).strftime("%Y-%m-%d")
+    return f"chang_arxiv_{city or 'barcha_shaharlar'}_{since or 'boshidan'}_{end}.csv"
 
 
 def since_date(days: int | None) -> str | None:

@@ -40,6 +40,9 @@
     historyFor: null,
     historyDays: 30,
     histMetric: "pm10",
+    histYear: null,
+    dlFrom: null,
+    dlTo: null,
     historySource: "live",
     archiveSummary: null,
     reports: null,
@@ -1065,7 +1068,43 @@
     renderStats();
   }
 
-  const periodRows = () => (state.historyDays ? state.history.slice(-state.historyDays) : state.history);
+  function periodRows() {
+    if (state.historyDays) return state.history.slice(-state.historyDays);
+    if (state.histYear) return state.history.filter((d) => d.date.startsWith(String(state.histYear)));
+    return state.history;
+  }
+  const historyYears = () => [...new Set((state.history || []).map((d) => +d.date.slice(0, 4)))].sort((a, b) => b - a);
+
+  // Yillar bo'yicha qisqacha statistika (PM10)
+  function yearlyStats() {
+    const by = {};
+    (state.history || []).forEach((d) => {
+      if (d.pm10_mean === null || d.pm10_mean === undefined) return;
+      const y = d.date.slice(0, 4), o = (by[y] = by[y] || { sum: 0, n: 0, dusty: 0, who: 0, max: 0, src: d.src });
+      o.sum += d.pm10_mean; o.n++;
+      if (d.pm10_mean > 100) o.dusty++;
+      if (d.pm10_mean > 45) o.who++;
+      o.max = Math.max(o.max, d.pm10_max || 0);
+    });
+    return Object.keys(by).sort((a, b) => b - a).map((y) => ({ year: +y, avg: by[y].sum / by[y].n, ...by[y] }));
+  }
+
+  function yearsOverviewHTML() {
+    const ys = yearlyStats();
+    if (!ys.length) return `<p class="muted small">${esc(tr("error"))}</p>`;
+    const maxAvg = Math.max(...ys.map((y) => y.avg), 1);
+    const rows = ys.map((y) => `<button type="button" class="yrow" data-year="${y.year}">
+        <b>${y.year}</b>
+        <span class="ybar"><i style="width:${(100 * y.avg / maxAvg).toFixed(0)}%;background:${levelColor(y.avg)}"></i></span>
+        <span style="color:${levelColor(y.avg)}"><b>${fmt(y.avg)}</b></span>
+        <span>${y.dusty}</span><span>${y.who}</span><span class="muted">${fmt(y.max)}</span></button>`).join("");
+    return `<div class="muted small" style="margin:12px 0 6px">${esc(tr("yearlyTable"))} · ${esc(tr("tapYear"))}</div>
+      <div class="yhead"><span>${esc(tr("colYear"))}</span><span></span><span>${esc(tr("colAvg"))}</span>
+        <span>${esc(tr("colDusty"))}</span><span>${esc(tr("colWho"))}</span><span>${esc(tr("colMax"))}</span></div>
+      <div class="ytable">${rows}</div>
+      <p class="muted small" style="margin:8px 0 0">${esc(tr("srcNote"))}</p>`;
+  }
+
 
   function rankingHTML() {
     const ov = (state.overview || []).filter((o) => o.pm10 !== null && o.pm10 !== undefined).slice().sort((a, b) => a.pm10 - b.pm10);
@@ -1080,6 +1119,7 @@
 
   function historyHTML() {
     if (state.history === null) return `<div class="skeleton" style="height:260px"></div>`;
+    if (state.historyDays === 0 && !state.histYear) return yearsModeHTML();
     const days = periodRows();
     if (!days.length) return `<p class="muted">${esc(tr("error"))}</p>`;
     const pm = days.filter((d) => d.pm10_mean !== null && d.pm10_mean !== undefined);
@@ -1091,12 +1131,12 @@
     let cells = '<i class="empty"></i>'.repeat(firstDow);
     cells += days.map((d) => `<i data-day="${d.date}" style="background:${d.pm10_mean !== null && d.pm10_mean !== undefined ? levelColor(d.pm10_mean) : "var(--soft)"}"></i>`).join("");
     const legend = state.meta.levels.colors.map((c) => `<i style="background:${c}"></i>`).join("");
-    const periods = [[30, "days30"], [90, "days90"], [365, "days365"], [0, "daysAll"]];
+    const periods = [[30, "days30"], [90, "days90"], [365, "days365"], [0, "yearsTab"]];
     const metricChips = Object.keys(METRICS).filter((k) => state.historySource === "archive" || ["pm10", "pm25", "dust"].includes(k))
       .map((k) => `<button type="button" data-metric="${k}" class="${k === state.histMetric ? "on" : ""}">${esc(METRICS[k].label())}</button>`).join("");
-    return `<div class="seg four" id="histSeg">${periods.map(([d, k]) =>
-        `<button type="button" data-days="${d}" class="${state.historyDays === d ? "on" : ""}">${esc(tr(k))}</button>`).join("")}</div>
-      <p class="small" style="margin:12px 0 0">${esc(tr("historySummary", { n: days.length, d: dusty }))}</p>
+    return `${periodSegHTML()}${state.historyDays === 0 ? yearChipsHTML() : ""}
+      <p class="small" style="margin:12px 0 0">${esc(state.historyDays === 0 && state.histYear
+        ? tr("yearSummary", { y: state.histYear, n: days.length, d: dusty }) : tr("historySummary", { n: days.length, d: dusty }))}</p>
       <div class="tiles">
         <div class="tile"><div class="t-val" style="color:${levelColor(avg)}">${fmt(avg)}</div><div class="t-label">${esc(tr("avgPm"))}</div></div>
         <div class="tile"><div class="t-val">${dusty}</div><div class="t-label">${esc(tr("dustyDays"))}<br>${esc(tr("dustyDaysDesc"))}</div></div>
@@ -1111,6 +1151,40 @@
       <div class="chart-box tall"><canvas id="chartHist"></canvas></div>`;
   }
 
+  function periodSegHTML() {
+    const periods = [[30, "days30"], [90, "days90"], [365, "days365"], [0, "yearsTab"]];
+    return `<div class="seg four" id="histSeg">${periods.map(([d, k]) =>
+      `<button type="button" data-days="${d}" class="${state.historyDays === d ? "on" : ""}">${esc(tr(k))}</button>`).join("")}</div>`;
+  }
+
+  function yearChipsHTML() {
+    const ys = historyYears();
+    return `<div class="chips" id="yearChips"><button type="button" data-hyear="" class="${!state.histYear ? "on" : ""}">${esc(tr("allYears"))}</button>` +
+      ys.map((y) => `<button type="button" data-hyear="${y}" class="${state.histYear === y ? "on" : ""}">${y}</button>`).join("") + "</div>";
+  }
+
+  function yearsModeHTML() {
+    const metricChips = Object.keys(METRICS).filter((k) => state.historySource === "archive" || ["pm10", "pm25", "dust"].includes(k))
+      .map((k) => `<button type="button" data-metric="${k}" class="${k === state.histMetric ? "on" : ""}">${esc(METRICS[k].label())}</button>`).join("");
+    return `${periodSegHTML()}${yearChipsHTML()}${yearsOverviewHTML()}
+      <div class="muted small" style="margin:14px 0 0">${esc(tr("monthlyChart"))}</div>
+      <div class="chips" id="metricChips">${metricChips}</div>
+      <div class="chart-box tall"><canvas id="chartHist"></canvas></div>`;
+  }
+
+  function coverageHTML() {
+    const h = state.meta.history || {}, s = state.archiveSummary || {};
+    const lines = [];
+    if (s.first) lines.push(tr("covWeather", { from: s.first.slice(0, 4) }));
+    if (s.pm_first) lines.push(tr("covPm", { from: s.pm_first.slice(0, 4) }));
+    const e = h.eac4 || {};
+    if (!e.key) lines.push(tr("covEac4Need"));
+    else if (e.running) lines.push(tr("covEac4Run", { year: e.running }));
+    else if (e.errors && e.errors.length) lines.push(tr("covEac4Err", { detail: (e.error_detail || "").slice(0, 120) }));
+    if (h.history === "running" && !e.running) lines.push(tr("covImporting"));
+    return lines.length ? `<div class="coverage"><b>${esc(tr("coverage"))}</b>${lines.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : "";
+  }
+
   function archiveHTML() {
     const open = `<p class="muted small" style="margin:0 0 10px">${esc(tr("archiveOpen"))}</p>`;
     let info;
@@ -1122,13 +1196,48 @@
     }
     const cityBtn = state.place.key
       ? `<button type="button" class="primary-btn" id="dlCity">${esc(tr("dlCity", { place: placeName() }))}</button>` : "";
-    return `<h4>${esc(tr("archiveTitle"))}</h4>${info}${open}${cityBtn}
-      <button type="button" class="ghost-btn" id="dlAll">${esc(tr("dlAll"))}</button>
-      <p class="muted small" style="margin:10px 0 0">${esc(tr("archivePeriod", { p: state.historyDays ? tr(state.historyDays === 30 ? "days30" : state.historyDays === 90 ? "days90" : "days365") : tr("daysAll") }))}</p>`;
+    const first = +((state.archiveSummary && state.archiveSummary.first) || todayStr()).slice(0, 4);
+    const last = +todayStr().slice(0, 4);
+    if (!state.dlFrom || state.dlFrom < first) state.dlFrom = first;
+    if (!state.dlTo || state.dlTo > last) state.dlTo = last;
+    const opts = (sel) => Array.from({ length: last - first + 1 }, (_, i) => first + i)
+      .map((y) => `<option value="${y}" ${y === sel ? "selected" : ""}>${y}</option>`).join("");
+    return `<h4>${esc(tr("archiveTitle"))}</h4>${info}${coverageHTML()}${open}
+      <div class="range"><label>${esc(tr("fromYear"))}<select id="dlFrom">${opts(state.dlFrom)}</select></label>
+        <span>—</span><label>${esc(tr("toYear"))}<select id="dlTo">${opts(state.dlTo)}</select></label></div>
+      ${cityBtn}<button type="button" class="ghost-btn" id="dlAll">${esc(tr("dlAll"))}</button>`;
+  }
+
+  function drawMonthlyChart() {
+    const m = METRICS[state.histMetric] || METRICS.pm10, by = {};
+    state.history.forEach((d) => {
+      const v = d[m.key];
+      if (v === null || v === undefined) return;
+      const k = d.date.slice(0, 7), o = (by[k] = by[k] || { s: 0, n: 0 });
+      o.s += v; o.n++;
+    });
+    const months = Object.keys(by).sort();
+    const vals = months.map((k) => +(by[k].s / by[k].n).toFixed(1));
+    const MS = MONTHS_SHORT[state.lang];
+    makeChart("chartHist", {
+      type: "line",
+      data: { labels: months.map((k) => MS[+k.slice(5, 7) - 1] + " " + k.slice(2, 4)), datasets: [{
+        label: m.label(), data: vals, borderColor: m.color || "#d84315", backgroundColor: (m.color || "#d84315") + "26",
+        fill: true, borderWidth: 2, pointRadius: 0, tension: .3,
+        segment: m.color ? undefined : { borderColor: (c) => levelColor(c.p1.parsed.y) },
+      }] },
+      options: baseOpts({
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${m.label()}: ${fmt(c.parsed.y, 1)} ${m.unit}` } } },
+        scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 7 } },
+                  y: { beginAtZero: state.histMetric !== "temp", grid: { color: "rgba(127,127,127,.12)" } } },
+        onClick: (_e, els) => { if (els.length) { state.histYear = +months[els[0].index].slice(0, 4); renderStats(); } },
+      }),
+    });
   }
 
   function drawHistoryChart() {
     if (!state.history || !state.history.length) return;
+    if (state.historyDays === 0 && !state.histYear) return drawMonthlyChart();
     const days = periodRows(), m = METRICS[state.histMetric] || METRICS.pm10;
     const vals = days.map((d) => d[m.key] ?? null);
     const many = days.length > 120;
@@ -1210,16 +1319,16 @@
   async function downloadArchive(all) {
     const key = all ? "all" : state.place.key;
     if (!key) return;
-    const days = state.historyDays;
-    const url = `${location.origin}/api/archive.csv?key=${encodeURIComponent(key)}&days=${days}&lang=${state.lang}`;
+    const from = Math.min(state.dlFrom, state.dlTo), to = Math.max(state.dlFrom, state.dlTo);
+    const url = `${location.origin}/api/archive.csv?key=${encodeURIComponent(key)}&from=${from}&to=${to}&lang=${state.lang}`;
     haptic("light");
     if (inTelegram) {
       try {  // eng ishonchli: bot faylni chatga yuboradi
-        await api("/api/archive/send", { method: "POST", body: JSON.stringify({ key, days, lang: state.lang }) });
+        await api("/api/archive/send", { method: "POST", body: JSON.stringify({ key, from: String(from), to: String(to), lang: state.lang }) });
         haptic("success");
         return toast(tr("archiveSent"));
       } catch (e) { console.warn("send", e); }
-      try { if (tg.downloadFile) return tg.downloadFile({ url, file_name: `chang_arxiv_${key}.csv` }); } catch { /* eski versiya */ }
+      try { if (tg.downloadFile) return tg.downloadFile({ url, file_name: `chang_arxiv_${key}_${from}-${to}.csv` }); } catch { /* eski versiya */ }
       return tg.openLink(url);
     }
     const a = document.createElement("a");
@@ -1517,7 +1626,9 @@
       if (pr) setProfile(pr.dataset.profile);
       if (e.target.closest("#openReport")) { haptic(); openReportSheet(); }
       const hd = e.target.closest("#histSeg button[data-days]");
-      if (hd) { haptic(); state.historyDays = +hd.dataset.days; renderStats(); }
+      if (hd) { haptic(); state.historyDays = +hd.dataset.days; state.histYear = null; renderStats(); }
+      const hy = e.target.closest("#yearChips button[data-hyear], .yrow[data-year]");
+      if (hy) { haptic(); state.histYear = +(hy.dataset.hyear ?? hy.dataset.year) || null; renderStats(); }
       const mc = e.target.closest("#metricChips button[data-metric]");
       if (mc) { haptic(); state.histMetric = mc.dataset.metric; document.querySelectorAll("#metricChips button").forEach((b) => b.classList.toggle("on", b === mc)); drawHistoryChart(); }
       const dl = e.target.closest(".day-link[data-day]");
@@ -1530,6 +1641,8 @@
       if (cell) openDay(cell.dataset.day);
     });
     document.addEventListener("change", (e) => {
+      if (e.target.id === "dlFrom") state.dlFrom = +e.target.value;
+      if (e.target.id === "dlTo") state.dlTo = +e.target.value;
       if (e.target.id === "tAlerts") { haptic(); saveSettings({ alerts: e.target.checked }); }
       if (e.target.id === "tDaily") { haptic(); saveSettings({ daily: e.target.checked }); }
     });

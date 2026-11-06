@@ -50,6 +50,24 @@ PM10, PM2.5, chang (o'rtacha va maksimum), aerozol (AOD), AQI, ozon, NO₂, SO�
 
 `key`: shahar (`toshkent`, `nukus`, `samarqand`, …) yoki `all`. `days`: 30, 90, 365 yoki `0` (butun arxiv). `lang`: `uz`/`ru` (Excel uchun `;` va o'nlik vergul) yoki `en`.
 
+### 📜 2015 yildan boshlab tarixiy ma'lumot
+Server ishga tushganda arxiv fonda **2015 yildan** to'ldiriladi (to'xtasa, qolgan joyidan davom etadi):
+
+| Davr | Ma'lumot | Manba | Kalit |
+|---|---|---|---|
+| 2015 → hozir | Harorat, namlik, shamol, yog'in, tuproq namligi | Open-Meteo ERA5 arxivi | kerak emas |
+| 2022 → hozir | PM10, PM2.5, chang, gazlar, AQI, UV | Open-Meteo / CAMS | kerak emas |
+| 2015 → 2021 | PM10, PM2.5, aerozol (AOD), chang aerozoli | Copernicus CAMS reanalizi (EAC4) | **`ADS_KEY`** (bepul) |
+
+**2015–2021 yillar chang ma'lumoti uchun Copernicus kalitini olish (5 daqiqa):**
+1. https://ads.atmosphere.copernicus.eu saytida **Register** orqali bepul ro'yxatdan o'ting va emailni tasdiqlang.
+2. Saytga kirib, **CAMS global reanalysis (EAC4)** sahifasini oching → **Download** bo'limi pastidagi **Terms of use** (litsenziya) ni qabul qiling.
+3. O'z profilingizga kiring (yuqori o'ng burchakdagi ism) va **API Token** (Personal Access Token) ni nusxalang.
+4. Railway → **chang-app** → **Variables** → `ADS_KEY` = token.
+5. Har bir yil Copernicus navbatida bir necha daqiqadan bir necha soatgacha tayyorlanadi. Jarayon ilovada (**Statistika → Arxiv qamrovi**) ko'rinadi.
+
+Ilovada **Statistika → Yillar**: har yilgi o'rtacha chang va changli kunlar jadvali, 2015 yildan buyongi oylik grafik, istalgan yilning taqvimi. Yuklab olishda **boshlanish va tugash yilini** tanlash mumkin. Havola orqali: `/api/archive.csv?key=nukus&from=2015&to=2020`.
+
 ⚠️ **Arxiv yo'qolmasligi uchun Volume shart!** Volume'siz Railway har yangilanishda bazani o'chiradi. Model ma'lumotining so'nggi 92 kuni qayta tiklanadi, lekin undan eski kunlar va datchik o'lchovlari yo'qoladi:
 1. **chang-app** kartochkasi ustida o'ng tugma → **Attach Volume** → mount path: `/data`
 2. **Variables**: `DB_PATH` = `/data/chang_app.db`
@@ -83,6 +101,7 @@ Railway'da `ADMIN_ID` o'zgaruvchisiga o'z Telegram ID raqamingizni yozing (@user
 | `risk.py` | Bo'ron xavfi indeksi |
 | `sensors.py` | Haqiqiy datchiklar (aqicn.org) |
 | `archive.py` | Har kungi ma'lumotlar arxivi va CSV eksport |
+| `history.py` | 2015 yildan tarixiy import (ERA5, Open-Meteo, CAMS EAC4) |
 | `mock_data.py` | Faqat sinov uchun soxta ma'lumot (`MOCK_DATA=1`) |
 
 ---
