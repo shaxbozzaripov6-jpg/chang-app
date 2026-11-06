@@ -273,3 +273,79 @@ def sensor_daily(city: str, date: str) -> dict | None:
         return None
     rnd = lambda v: None if v is None else round(v, 1)  # noqa: E731
     return {"sensor_aqi": rnd(r[0]), "sensor_pm25": rnd(r[1]), "sensor_pm10": rnd(r[2]), "sensor_n": r[3]}
+
+
+# ---------------- Sog'liq: kundalik (shaxsiy ma'lumot, faqat rozilik bilan) ----------------
+_ucols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+for _c, _t in (("health_tips", "INTEGER DEFAULT 1"), ("diary_remind", "INTEGER DEFAULT 0"), ("diary_consent", "TEXT"),
+               ("last_health", "TEXT"), ("last_diary_remind", "TEXT"), ("last_season", "TEXT")):
+    if _c not in _ucols:
+        conn.execute(f"ALTER TABLE users ADD COLUMN {_c} {_t}")
+conn.execute("""CREATE TABLE IF NOT EXISTS symptoms (
+    user_id INTEGER NOT NULL, date TEXT NOT NULL, symptoms TEXT, severity INTEGER, note TEXT,
+    city TEXT, lat REAL, lon REAL, pm10 REAL, pm25 REAL, dust REAL, temp REAL, updated TEXT,
+    PRIMARY KEY (user_id, date))""")
+conn.commit()
+FIELDS = FIELDS + ("health_tips", "diary_remind")
+
+
+def set_user_field(uid: int, field: str, value):
+    assert field in ("diary_consent", "last_health", "last_diary_remind", "last_season")
+    conn.execute(f"UPDATE users SET {field}=? WHERE user_id=?", (value, uid))
+    conn.commit()
+
+
+def diary_upsert(uid: int, day: str, symptoms: list, severity: int, note: str, snap: dict):
+    conn.execute(
+        "INSERT INTO symptoms(user_id, date, symptoms, severity, note, city, lat, lon, pm10, pm25, dust, temp, updated) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id, date) DO UPDATE SET symptoms=excluded.symptoms, "
+        "severity=excluded.severity, note=excluded.note, city=excluded.city, lat=excluded.lat, lon=excluded.lon, "
+        "pm10=excluded.pm10, pm25=excluded.pm25, dust=excluded.dust, temp=excluded.temp, updated=excluded.updated",
+        (uid, day, ",".join(symptoms), severity, note, snap.get("city"), snap.get("lat"), snap.get("lon"),
+         snap.get("pm10"), snap.get("pm25"), snap.get("dust"), snap.get("temp"), _now()))
+    conn.commit()
+
+
+def diary_list(uid: int, since: str | None = None) -> list[dict]:
+    q, args = "SELECT * FROM symptoms WHERE user_id=?", [uid]
+    if since:
+        q += " AND date>=?"
+        args.append(since)
+    out = []
+    for r in conn.execute(q + " ORDER BY date", args).fetchall():
+        d = dict(r)
+        d["symptoms"] = [s for s in (d["symptoms"] or "").split(",") if s]
+        out.append(d)
+    return out
+
+
+def diary_has(uid: int, day: str) -> bool:
+    return conn.execute("SELECT 1 FROM symptoms WHERE user_id=? AND date=?", (uid, day)).fetchone() is not None
+
+
+def diary_delete_all(uid: int):
+    conn.execute("DELETE FROM symptoms WHERE user_id=?", (uid,))
+    conn.execute("UPDATE users SET diary_consent=NULL, diary_remind=0 WHERE user_id=?", (uid,))
+    conn.commit()
+
+
+def users_where(cond: str):
+    return conn.execute(f"SELECT * FROM users WHERE lat IS NOT NULL AND {cond}").fetchall()
+
+
+def research_symptoms(min_users: int = 5) -> list[dict]:
+    """Anonim statistika: shahar va kun bo'yicha simptomlar soni (kamida min_users kishi bo'lsa)."""
+    groups: dict = {}
+    for r in conn.execute("SELECT city, date, user_id, symptoms, severity FROM symptoms WHERE city IS NOT NULL"):
+        g = groups.setdefault((r["city"], r["date"]), {"users": set(), "counts": {}, "sev": []})
+        g["users"].add(r["user_id"])
+        g["sev"].append(r["severity"] or 0)
+        for s in (r["symptoms"] or "").split(","):
+            if s:
+                g["counts"][s] = g["counts"].get(s, 0) + 1
+    out = []
+    for (city, day), g in sorted(groups.items()):
+        if len(g["users"]) >= min_users:
+            out.append({"city": city, "date": day, "users": len(g["users"]), "counts": g["counts"],
+                        "severity_mean": round(sum(g["sev"]) / len(g["sev"]), 2)})
+    return out

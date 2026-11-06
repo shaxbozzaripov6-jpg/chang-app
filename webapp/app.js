@@ -51,6 +51,14 @@
     theme: "auto",
     sensor: null,
     sensorsMap: null,
+    health: null,
+    seasons: null,
+    diary: null,
+    healthDay: "today",
+    seasonMonth: null,
+    diaryPick: null,
+    diarySev: 1,
+    diaryNote: "",
   };
 
   // ---------------- Yordamchilar ----------------
@@ -191,6 +199,7 @@
       state.data = await api("/api/city?" + placeQuery());
       renderAll();
       loadSensor();
+      loadHealth(state.view === "health");
     } catch (e) {
       console.error(e);
       renderError();
@@ -620,6 +629,7 @@
       </div>
       ${adv ? `<div class="for-you"><b>${tv("profileIcons")[state.profile]} ${esc(tr("forYou"))}:</b> ${esc(adv)}</div>` : ""}</div>`;
 
+    html += `<div class="card" id="healthMini">${healthMiniHTML()}</div>`;
     if (state.meta.sensors) html += `<div class="card" id="sensorCard">${sensorCardHTML()}</div>`;
     html += riskCard();
     html += activityCard();
@@ -1399,6 +1409,193 @@
     if (cw) cw.scrollLeft = cw.scrollWidth;
   }
 
+  // ---------------- Sog'liq ----------------
+  const LEVEL4 = ["#2e9d4f", "#e0a800", "#f07b1a", "#d93025"];
+
+  async function loadHealth(full) {
+    const q = placeQuery();
+    try { state.health = await api(`/api/health?${q}&profile=${state.profile}&lang=${state.lang}`); } catch (e) { console.warn(e); state.health = null; }
+    renderHealthMini();
+    if (!full) return renderHealth();
+    try { state.seasons = await api(`/api/seasons?${q}&lang=${state.lang}`); } catch (e) { console.warn(e); state.seasons = null; }
+    if (inTelegram) { try { state.diary = await api("/api/diary"); } catch (e) { console.warn(e); state.diary = null; } }
+    renderHealth();
+  }
+
+  function healthMiniHTML() {
+    const h = state.health && state.health.today;
+    const head = `<h4>${esc(tr("healthTodayShort"))}</h4>`;
+    if (!h) return head + '<div class="skeleton" style="height:70px;margin:0"></div>';
+    return head + `<div class="hmini">${h.cats.map((c) => `<div class="hm" style="--lc:${LEVEL4[c.level]}">
+        <span class="hm-ico">${c.icon}</span><span class="hm-name">${esc(c.name)}</span><span class="hm-lv">${esc(c.level_name)}</span></div>`).join("")}</div>
+      <button type="button" class="ghost-btn" data-goto="health">${esc(tr("moreBtn"))}</button>`;
+  }
+
+  function renderHealthMini() {
+    const el = $("#healthMini");
+    if (el) { el.innerHTML = healthMiniHTML(); decorateHeads(el.parentNode); }
+  }
+
+  function riskListHTML(a) {
+    return a.cats.map((c) => `<details class="hcat" style="--lc:${LEVEL4[c.level]}" ${c.level >= 2 ? "open" : ""}>
+      <summary><span class="hc-ico">${c.icon}</span><span class="hc-name">${esc(c.name)}
+        ${c.reasons.length ? `<small>${esc(c.reasons.join(" · "))}</small>` : ""}</span>
+        <span class="hc-lv">${esc(c.level_name)}</span></summary>
+      ${c.tips.length ? `<ul class="tips">${c.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : `<p class="muted small" style="margin:8px 0 0">${esc(tr("noTips"))}</p>`}
+    </details>`).join("");
+  }
+
+  function seasonsHTML() {
+    const S = state.seasons;
+    if (!S) return `<h4>${esc(tr("seasonsTitle"))}</h4><div class="skeleton" style="height:180px;margin:0"></div>`;
+    const MS = MONTHS_SHORT[state.lang], cur = new Date().getMonth() + 1;
+    const icons = { dust: "🌪", heat: "🔥", cold: "🤧", uv: "☀️" };
+    const sel = state.seasonMonth || cur;
+    const m = S.months[sel - 1];
+    const cells = S.months.map((o) => `<button type="button" class="smonth${o.month === cur ? " cur" : ""}${o.month === sel ? " on" : ""}"
+        data-smonth="${o.month}" style="--n:${o.tags.length}"><b>${MS[o.month - 1]}</b><span>${o.tags.map((t) => icons[t]).join("") || "·"}</span></button>`).join("");
+    const legend = Object.entries(icons).map(([k, i]) => `<span>${i} ${esc(S.names[k])}</span>`).join("");
+    const row = (l, v) => `<div class="dl-row"><span class="muted">${esc(l)}</span><b>${v}</b></div>`;
+    const pc = (v) => (v === null || v === undefined ? "—" : v + "%");
+    const detail = `<div class="sdetail"><div class="dl-title">${esc(MONTHS_LONG[state.lang][sel - 1])}</div>
+      ${m.tags.length ? `<div class="stags">${m.tags.map((t) => `<span>${icons[t]} ${esc(S.names[t])}</span>`).join("")}</div>` : `<p class="muted small" style="margin:4px 0">${esc(tr("noSeason"))}</p>`}
+      ${row(tr("mPm10"), m.pm10_avg === null ? "—" : `<span style="color:${levelColor(m.pm10_avg)}">${fmt(m.pm10_avg)} µg/m³</span>`)}
+      ${row(tr("mDusty"), pc(m.dusty_pct))}${row(tr("mHeat"), pc(m.heat_pct))}${row(tr("mCold"), pc(m.cold_pct))}
+      ${row(tr("mTempAvg"), `${fmt(m.tmin_avg)}° … ${fmt(m.tmax_avg)}°`)}${row(tr("mUv"), fmt(m.uv_avg, 1))}</div>`;
+    const yrs = S.years.length ? `${S.years[0]}–${S.years[S.years.length - 1]}` : "—";
+    return `<h4>${esc(tr("seasonsTitle"))}</h4>
+      <p class="muted small" style="margin:-6px 0 10px">${esc(tr("seasonsNote", { city: cityName(S.city), years: yrs }))}</p>
+      <div class="smonths">${cells}</div><div class="slegend">${legend}</div>${detail}`;
+  }
+
+  function diaryHTML() {
+    const head = `<h4>${esc(tr("diaryTitle"))}</h4><p class="muted small" style="margin:-6px 0 10px">${esc(tr("diaryIntro"))}</p>`;
+    if (!inTelegram) return head + `<p class="small">${esc(tr("diaryOnlyTg"))}</p>`;
+    const D = state.diary;
+    if (!D) return head + '<div class="skeleton" style="height:140px;margin:0"></div>';
+    if (!D.consent) {
+      return head + `<div class="consent"><b>🔒 ${esc(tr("consentTitle"))}</b><p>${esc(tr("consentText"))}</p>
+        <label class="chk"><input type="checkbox" id="consentChk"> ${esc(tr("consentCheck"))}</label>
+        <button type="button" class="primary-btn" id="consentBtn" disabled>${esc(tr("consentAgree"))}</button></div>`;
+    }
+    const today = todayStr();
+    const todayEntry = D.entries.find((e) => e.date === today);
+    if (!state.diaryPick) {
+      state.diaryPick = new Set(todayEntry ? todayEntry.symptoms : []);
+      state.diarySev = todayEntry && todayEntry.severity ? todayEntry.severity : 1;
+      state.diaryNote = todayEntry ? todayEntry.note || "" : "";
+    }
+    const chips = ["none", ...D.symptoms].map((k) => `<button type="button" class="sym${state.diaryPick.has(k) ? " on" : ""}${k === "none" ? " ok" : ""}" data-sym="${k}">${esc(D.names[k])}</button>`).join("");
+    const hasSym = [...state.diaryPick].some((k) => k !== "none");
+    const sevs = [1, 2, 3].map((v) => `<button type="button" data-sev="${v}" class="${state.diarySev === v ? "on" : ""}">${esc(tr("sev" + v))}</button>`).join("");
+    const ins = D.insights;
+    const recent = D.entries.slice(-7).reverse().map((e) => `<div class="dl-row"><span>${esc(shortDate(e.date))}</span>
+      <b>${esc(e.symptoms.map((k) => D.names[k] || k).join(", "))}${e.pm10 !== null && e.pm10 !== undefined ? ` <span class="muted">· PM10 ${fmt(e.pm10)}</span>` : ""}</b></div>`).join("");
+    return head + `<div class="dl-title">${esc(tr("todayFeel"))} ${todayEntry ? `<span class="muted">✓</span>` : ""}</div>
+      <div class="syms">${chips}</div>
+      ${hasSym ? `<div class="muted small" style="margin:10px 0 4px">${esc(tr("severity"))}</div><div class="seg" id="sevSeg">${sevs}</div>` : ""}
+      <input id="diaryNote" class="note-in" maxlength="200" placeholder="${esc(tr("notePh"))}" value="${esc(state.diaryNote || "")}">
+      <button type="button" class="primary-btn" id="saveDiary" ${state.diaryPick.size ? "" : "disabled"}>${esc(tr("saveDay"))}</button>
+      <div class="dl-title" style="margin-top:18px">${esc(tr("insightsTitle"))} <span class="muted">· ${ins.days} ${esc(tr("daysShort"))}</span></div>
+      ${ins.top.length ? `<div class="stags">${ins.top.map((t) => `<span>${esc(t.name)}: ${t.count}</span>`).join("")}</div>` : ""}
+      <ul class="tips">${ins.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+      ${D.daily.length || D.entries.length ? `<div class="muted small" style="margin-top:10px">${esc(tr("diaryChart"))}</div><div class="chart-box"><canvas id="chartDiary"></canvas></div>` : ""}
+      ${recent ? `<div class="dl-title" style="margin-top:14px">${esc(tr("recent"))}</div>${recent}` : ""}
+      <button type="button" class="ghost-btn" id="reportBtn">${esc(tr("reportBtn"))}</button>
+      <button type="button" class="danger-btn" id="deleteDiary">${esc(tr("deleteDiary"))}</button>`;
+  }
+
+  function drawDiaryChart() {
+    const D = state.diary;
+    if (!D || !D.consent || !document.getElementById("chartDiary")) return;
+    const pm = {};
+    D.daily.forEach((d) => { pm[d.date] = d.pm10; });
+    D.entries.forEach((e) => { if (pm[e.date] === undefined || pm[e.date] === null) pm[e.date] = e.pm10; });
+    const dates = Object.keys(pm).sort().slice(-90);
+    const byDate = Object.fromEntries(D.entries.map((e) => [e.date, e]));
+    makeChart("chartDiary", {
+      type: "line",
+      data: { labels: dates.map(shortDate), datasets: [
+        { label: "PM10", data: dates.map((d) => pm[d]), borderColor: "#c2562a", backgroundColor: "#e0a85a33", fill: true, borderWidth: 1.8, pointRadius: 0, tension: .3 },
+        { label: tr("symptomDays"), data: dates.map((d) => (byDate[d] && byDate[d].symptoms.some((k) => k !== "none") ? pm[d] : null)),
+          showLine: false, pointRadius: dates.map((d) => (byDate[d] ? 3 + 2 * (byDate[d].severity || 0) : 0)), pointBackgroundColor: "#2c5aa8", borderColor: "#2c5aa8" },
+      ] },
+      options: baseOpts({ plugins: { legend: { display: true, labels: { boxWidth: 12, boxHeight: 2 } } } }),
+    });
+  }
+
+  function renderHealth() {
+    const el = $("#view-health");
+    if (!el) return;
+    const H = state.health;
+    const a = H ? (state.healthDay === "tomorrow" && H.tomorrow ? H.tomorrow : H.today) : null;
+    const tabs = `<div class="seg two" id="hdaySeg"><button type="button" data-hday="today" class="${state.healthDay !== "tomorrow" ? "on" : ""}">${esc(tr("dayToday"))}</button>
+      <button type="button" data-hday="tomorrow" class="${state.healthDay === "tomorrow" ? "on" : ""}">${esc(tr("dayTomorrow"))}</button></div>`;
+    const riskCardH = a ? `<div class="card"><h4>${esc(tr("healthToday"))}</h4>${tabs}
+        <div class="hoverall" style="--lc:${LEVEL4[a.overall]}"><span>${esc(tr("overall"))}</span><b>${esc(a.overall_name)}</b></div>
+        ${riskListHTML(a)}
+        ${state.profile === "none" ? `<p class="muted small" style="margin:10px 0 0">${esc(tr("profileHint"))} <a href="#" data-goto="settings">${esc(tr("tabSettings"))} ›</a></p>` : ""}</div>`
+      : `<div class="card"><div class="skeleton" style="height:260px;margin:0"></div></div>`;
+    const s = state.settings || {};
+    const dis = inTelegram ? "" : "disabled";
+    el.innerHTML = riskCardH +
+      `<div class="card" id="seasonsCard">${seasonsHTML()}</div>
+       <div class="card" id="diaryCard">${diaryHTML()}</div>
+       <div class="card"><h4>${esc(tr("remindersTitle"))}</h4>
+         <div class="toggle-row"><div><div class="t-title">${esc(tr("remHealth"))}</div><div class="muted small">${esc(tr("remHealthDesc"))}</div></div>
+           <label class="switch"><input type="checkbox" id="tHealth" ${s.health_tips === 0 ? "" : "checked"} ${dis}><span></span></label></div>
+         <div class="toggle-row"><div><div class="t-title">${esc(tr("remDiary"))}</div><div class="muted small">${esc(tr("remDiaryDesc"))}</div></div>
+           <label class="switch"><input type="checkbox" id="tDiaryRem" ${s.diary_remind ? "checked" : ""} ${dis || (state.diary && state.diary.consent ? "" : "disabled")}><span></span></label></div>
+       </div>
+       <div class="card"><h4>${esc(tr("researchTitle"))}</h4><p class="small" style="margin:0 0 4px">${esc(tr("researchText"))}</p>
+         <button type="button" class="ghost-btn ext-link" data-href="/docs">${esc(tr("researchDocs"))}</button></div>
+       <p class="disclaimer">⚕️ ${esc((H && H.today && H.today.disclaimer) || "")}</p>`;
+    decorateHeads(el);
+    drawDiaryChart();
+  }
+
+  async function saveDiary() {
+    const btn = $("#saveDiary");
+    if (btn) btn.disabled = true;
+    try {
+      await api("/api/diary", { method: "POST", body: JSON.stringify({ symptoms: [...state.diaryPick], severity: state.diarySev, note: ($("#diaryNote") || {}).value || "" }) });
+      haptic("success"); toast(tr("savedDay"));
+      state.diary = await api("/api/diary");
+      renderHealth();
+    } catch (e) { console.error(e); toast(tr("error")); if (btn) btn.disabled = false; }
+  }
+
+  async function giveConsent() {
+    try {
+      await api("/api/diary", { method: "POST", body: JSON.stringify({ consent: true, symptoms: ["none"], severity: 0 }) });
+      state.diary = await api("/api/diary");
+      state.diaryPick = null;
+      haptic("success");
+      renderHealth();
+    } catch (e) { console.error(e); toast(tr("error")); }
+  }
+
+  async function sendReport() {
+    try {
+      await api("/api/diary/report", { method: "POST", body: JSON.stringify({ days: 30 }) });
+      haptic("success"); toast(tr("reportSent"));
+    } catch (e) { toast(e.status === 400 ? tr("reportEmpty") : tr("error")); }
+  }
+
+  function deleteDiary() {
+    const go = async () => {
+      try {
+        await api("/api/diary", { method: "DELETE" });
+        state.diary = await api("/api/diary");
+        state.diaryPick = null;
+        toast(tr("deleted"));
+        renderHealth();
+      } catch { toast(tr("error")); }
+    };
+    if (tg && tg.showConfirm) tg.showConfirm(tr("deleteConfirm"), (ok) => ok && go());
+    else if (confirm(tr("deleteConfirm"))) go();
+  }
+
   // ---------------- Sozlamalar ----------------
   function renderSettings() {
     const s = state.settings;
@@ -1459,6 +1656,7 @@
     renderSettings();
     if (state.data) renderHome();
     saveSettings({ profile: p });
+    loadHealth(state.view === "health");
     if (!inTelegram) toast(tr("saved"));
   }
 
@@ -1595,6 +1793,7 @@
     if (view !== "map") togglePlay(false);
     if (view === "forecast" && state.data) drawForecastCharts();
     if (view === "stats") loadHistory();
+    if (view === "health") { renderHealth(); loadHealth(true); }
     if (view === "map") {
       initMap();
       setTimeout(() => { if (state.map) { state.map.invalidateSize(); fitCities(); } }, 60);
@@ -1610,6 +1809,8 @@
     renderCityList();
     if (state.map) { renderCityMarkers(); renderReportPins(); renderLegend(); if (state.mapMode === "cloud") setFrame(state.frame); }
     saveSettings({ lang });
+    state.seasons = null;
+    loadHealth(state.view === "health");
   }
 
   // ---------------- Hodisalar ----------------
@@ -1617,6 +1818,7 @@
     document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => { haptic(); showView(t.dataset.view); }));
     $("#cityBtn").addEventListener("click", () => { haptic(); openSheet("citySheet", true); });
     $("#sheetBackdrop").addEventListener("click", () => openSheet("", false));
+    $("#settingsBtn").addEventListener("click", () => { haptic(); showView("settings"); });
     $("#refreshBtn").addEventListener("click", () => { haptic("light"); state.history = null; loadData(); });
     $("#locBtn").addEventListener("click", useLocation);
     $("#cityList").addEventListener("click", (e) => {
@@ -1636,10 +1838,34 @@
       if (p) selectPlace({ key: p.dataset.key });
       const l = e.target.closest("[data-lang]");
       if (l) setLang(l.dataset.lang);
+      const go = e.target.closest("[data-goto]");
+      if (go) { e.preventDefault(); haptic(); showView(go.dataset.goto); }
+      const hd2 = e.target.closest("#hdaySeg [data-hday]");
+      if (hd2) { haptic(); state.healthDay = hd2.dataset.hday; renderHealth(); }
+      const sm = e.target.closest("[data-smonth]");
+      if (sm) { haptic(); state.seasonMonth = +sm.dataset.smonth; $("#seasonsCard").innerHTML = seasonsHTML(); decorateHeads($("#view-health")); }
+      const sy = e.target.closest("[data-sym]");
+      if (sy) {
+        haptic();
+        const k = sy.dataset.sym, P = state.diaryPick;
+        if (k === "none") { P.clear(); P.add("none"); } else { P.delete("none"); P.has(k) ? P.delete(k) : P.add(k); }
+        state.diaryNote = ($("#diaryNote") || {}).value || "";
+        $("#diaryCard").innerHTML = diaryHTML(); decorateHeads($("#view-health")); drawDiaryChart();
+      }
+      const sv = e.target.closest("#sevSeg [data-sev]");
+      if (sv) { haptic(); state.diarySev = +sv.dataset.sev; document.querySelectorAll("#sevSeg button").forEach((b) => b.classList.toggle("on", b === sv)); }
+      if (e.target.closest("#saveDiary")) saveDiary();
+      if (e.target.closest("#consentBtn")) giveConsent();
+      if (e.target.closest("#reportBtn")) sendReport();
+      if (e.target.closest("#deleteDiary")) deleteDiary();
       const th = e.target.closest("[data-theme-set]");
       if (th) setTheme(th.dataset.themeSet);
       const ext = e.target.closest(".ext-link");
-      if (ext) { e.preventDefault(); if (tg && tg.openLink) tg.openLink(ext.href); else window.open(ext.href, "_blank", "noopener"); }
+      if (ext) {
+        e.preventDefault();
+        const href = ext.dataset.href ? location.origin + ext.dataset.href : ext.href;
+        if (tg && tg.openLink) tg.openLink(href); else window.open(href, "_blank", "noopener");
+      }
       const pr = e.target.closest("[data-profile]");
       if (pr) setProfile(pr.dataset.profile);
       if (e.target.closest("#openReport")) { haptic(); openReportSheet(); }
@@ -1663,6 +1889,9 @@
       if (e.target.id === "dlTo") state.dlTo = +e.target.value;
       if (e.target.id === "tAlerts") { haptic(); saveSettings({ alerts: e.target.checked }); }
       if (e.target.id === "tDaily") { haptic(); saveSettings({ daily: e.target.checked }); }
+      if (e.target.id === "tHealth") { haptic(); saveSettings({ health_tips: e.target.checked }); }
+      if (e.target.id === "tDiaryRem") { haptic(); saveSettings({ diary_remind: e.target.checked }); }
+      if (e.target.id === "consentChk") { const b = $("#consentBtn"); if (b) b.disabled = !e.target.checked; }
     });
     if (tg) tg.onEvent("themeChanged", () => { if (state.theme !== "auto") return; applyTheme(); if (state.data) renderAll(); });
   }

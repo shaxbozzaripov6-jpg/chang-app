@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="/static/app.css?v=9">
+  <link rel="stylesheet" href="/static/app.css?v=10">
 </head>
 <body>
   <div id="app">
@@ -19,9 +19,14 @@
         <span id="cityName">…</span>
         <svg viewBox="0 0 24 24" class="ico chev"><path d="M7 10l5 5 5-5z"/></svg>
       </button>
+      <div class="top-actions">
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="settings">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      </button>
       <button class="icon-btn" id="refreshBtn" type="button" aria-label="refresh">
         <svg viewBox="0 0 24 24" class="ico"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
       </button>
+      </div>
     </header>
 
     <main>
@@ -43,6 +48,7 @@
           </div>
         </div>
       </section>
+      <section class="view" id="view-health"></section>
       <section class="view" id="view-stats"></section>
       <section class="view" id="view-settings"></section>
     </main>
@@ -57,12 +63,13 @@
       <button class="tab" data-view="map" type="button">
         <svg viewBox="0 0 24 24"><path d="M15 5l-6-2-6 2v16l6-2 6 2 6-2V3zM9 5.2l6 2v11.6l-6-2z"/></svg><span data-i18n="tabMap"></span>
       </button>
+      <button class="tab" data-view="health" type="button">
+        <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.5 1.1 4.3 2.4h2c.8-1.3 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21zm-1-12v3H8v2h3v3h2v-3h3v-2h-3V9z"/></svg><span data-i18n="tabHealth"></span>
+      </button>
       <button class="tab" data-view="stats" type="button">
         <svg viewBox="0 0 24 24"><path d="M4 20h16v-2H4zm1-4h3V9H5zm5 0h3V4h-3zm5 0h3v-5h-3z"/></svg><span data-i18n="tabStats"></span>
       </button>
-      <button class="tab" data-view="settings" type="button">
-        <svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg><span data-i18n="tabSettings"></span>
-      </button>
+
     </nav>
   </div>
 
@@ -94,7 +101,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="/static/i18n.js?v=9"></script>
-  <script src="/static/app.js?v=9"></script>
+  <script src="/static/i18n.js?v=10"></script>
+  <script src="/static/app.js?v=10"></script>
 </body>
 </html>

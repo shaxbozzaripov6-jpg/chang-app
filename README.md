@@ -33,6 +33,16 @@ Birinchi bot (`chang-bot`) o'zgarmaydi va alohida ishlayveradi.
 
 🎨 Dizayn O'zbekiston tabiatidan ilhomlangan: firuza (Samarqand koshinlari), qum (Qizilqum), saksovul ranglari, milliy girih naqshi va hudud bo'yicha fon (Orolbo'yi, Qizilqum, Zarafshon vodiysi, Farg'ona vodiysi, Mirzacho'l, Poytaxt). 🔐 Sozlamalar va rasm yuborish Telegram imzosi (initData) bilan himoyalangan.
 
+## 🩺 Sog'liq bo'limi
+Havo va ob-havo ma'lumotlari sog'liq bilan bog'lanadi. **Ilova tashxis qo'ymaydi va dori tavsiya qilmaydi**, u faqat taxminiy xavf darajasini va umumiy ehtiyot choralarini ko'rsatadi. Har sahifada tibbiy eslatma bor.
+
+1. **Sog'liq xavfi (bugun / ertaga)**, 6 toifa bo'yicha: 🫁 nafas yo'llari (PM2.5, PM10, ozon), ❤️ yurak (PM2.5, haddan tashqari issiq yoki sovuq), 👁 ko'z va allergiya (chang, shamol), 🌡 issiqlik, 🤧 shamollash va gripp (sovuq, keskin sovish, namlik, mavsum), ☀️ UV. Shaxsiy profilga moslashadi: masalan, astma, homiladorlik yoki keksalikda chegaralar 30% pastroq bo'ladi.
+2. **Mavsumiy xavf taqvimi**: 2015 yildan buyongi arxiv asosida har bir shahar uchun 12 oy. 🌪 chang bo'ronlari, 🔥 issiqlik, 🤧 shamollash va ☀️ UV mavsumlari ko'rsatiladi.
+3. **Sog'liq kundaligi** (faqat rozilik bilan): har kungi simptomlar va og'irligi. Shu kungi havo ma'lumoti avtomatik yoziladi. Ilova simptomlarni chang va harorat bilan solishtiradi (*"Yo'tal ko'pincha chang yuqori kunlarda bo'lgan"*). Barcha yozuvlar bir tugma bilan o'chiriladi.
+4. **Bot eslatmalari**: soat 20:00 da ertangi muhim xavf haqida (profilga qarab), oy boshida yangi mavsum haqida, soat 21:00 da kundalikka yozish eslatmasi.
+5. **Shifokor uchun PDF hisobot**: so'nggi 30 kunlik simptomlar, havo grafigi va kuzatuvlar. Bot uni Telegram chatga yuboradi.
+6. **Ochiq tadqiqot ma'lumoti**: `/docs` sahifasi. Arxiv va **anonim** simptomlar statistikasi (`/api/research/symptoms.csv`) ochiq. Faqat kamida 5 kishi yozgan shahar-kunlar chiqariladi, ism, ID va izohlar hech qachon berilmaydi.
+
 ## 🗄 Ochiq ma'lumotlar arxivi
 Ilova **14 ta shahar** bo'yicha har kungi ma'lumotlarni avtomatik saqlaydi:
 PM10, PM2.5, chang (o'rtacha va maksimum), aerozol (AOD), AQI, ozon, NO₂, SO₂, CO, UV, harorat (min/maks), namlik, shamol, shiddat, yog'in, bo'ron xavfi indeksi va haqiqiy datchik o'lchovlari (`WAQI_TOKEN` bo'lsa, har soat yoziladi).
@@ -102,6 +112,8 @@ Railway'da `ADMIN_ID` o'zgaruvchisiga o'z Telegram ID raqamingizni yozing (@user
 | `sensors.py` | Haqiqiy datchiklar (aqicn.org) |
 | `archive.py` | Har kungi ma'lumotlar arxivi va CSV eksport |
 | `history.py` | 2015 yildan tarixiy import (ERA5, Open-Meteo, CAMS EAC4) |
+| `health.py` | Sog'liq xavfi, mavsumlar, kundalik tahlili, PDF hisobot |
+| `webapp/docs.html` | Tadqiqotchilar uchun ochiq ma'lumotlar hujjati (`/docs`) |
 | `mock_data.py` | Faqat sinov uchun soxta ma'lumot (`MOCK_DATA=1`) |
 
 ---

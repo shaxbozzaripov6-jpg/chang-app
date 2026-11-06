@@ -68,7 +68,7 @@ async def get_weather(lat: float, lon: float) -> dict:
                    "precipitation,soil_moisture_0_to_1cm"),
         "daily": ("weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,"
                   "precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,"
-                  "wind_direction_10m_dominant"),
+                  "wind_direction_10m_dominant,uv_index_max"),
         "wind_speed_unit": "ms",
         "timezone": "Asia/Tashkent",
         "forecast_days": 7,

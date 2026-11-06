@@ -68,7 +68,8 @@ async def get_weather(lat, lon):
                   "temperature_2m_min": [round(min(temp[i * 24:(i + 1) * 24]) - i * 0.4, 1) for i in range(7)],
                   "precipitation_sum": [0, 6.2, 0, 0, 3.1, 0.4, 0], "precipitation_probability_max": [5, 75, 0, 10, 60, 30, 5],
                   "wind_speed_10m_max": [9, 14, 5, 6, 8, 7, 4], "wind_gusts_10m_max": [15, 22, 8, 10, 14, 12, 7],
-                  "wind_direction_10m_dominant": [290, 315, 90, 200, 270, 300, 45]},
+                  "wind_direction_10m_dominant": [290, 315, 90, 200, 270, 300, 45],
+                  "uv_index_max": [4.1, 2.0, 6.5, 5.2, 3.0, 4.4, 8.3]},
     }
 
 

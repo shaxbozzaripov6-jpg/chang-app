@@ -37,6 +37,7 @@ from aiohttp import web  # noqa: E402
 
 import api  # noqa: E402
 import archive  # noqa: E402
+import health  # noqa: E402
 import history  # noqa: E402
 import db  # noqa: E402
 import sensors  # noqa: E402
@@ -416,6 +417,161 @@ async def send_archive_file(bot: Bot, chat_id: int, city, since, lang, until=Non
         return False
 
 
+# ---------------- API: sog'liq ----------------
+def _place_city(key, lat, lon):
+    return key or nearest_city(lat, lon) or min(CITIES, key=lambda k: db.distance_km(lat, lon, CITIES[k][2], CITIES[k][3]))
+
+
+async def h_health_risk(request):
+    """Bugun va ertaga uchun sog'liq xavfi (6 toifa), profilga moslashgan."""
+    key, lat, lon, _ = resolve_place(request.query)
+    profile = request.query.get("profile") if request.query.get("profile") in db.PROFILES else "none"
+    lang = request.query.get("lang") if request.query.get("lang") in LANGS else "uz"
+    try:
+        d = await point_data(lat, lon)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Sog'liq xatosi: %s", e)
+        raise web.HTTPBadGateway(text="data source error")
+    today = health.assess(d["air"], d["weather"], profile, lang)
+    dates = sorted({t[:10] for t in d["air"]["hourly"]["time"]})
+    nxt = [x for x in dates if x > today["date"]]
+    tomorrow = health.assess(d["air"], d["weather"], profile, lang, day=nxt[0]) if nxt else None
+    return web.json_response({"today": today, "tomorrow": tomorrow})
+
+
+async def h_seasons(request):
+    """Arxiv asosida 12 oylik mavsumiy xavf taqvimi."""
+    key, lat, lon, _ = resolve_place(request.query)
+    lang = request.query.get("lang") if request.query.get("lang") in LANGS else "uz"
+    city = _place_city(key, lat, lon)
+
+    async def load():
+        return health.seasons(db.archive_rows(city), lang)
+
+    data = await cached(("seasons", city, lang), load, ttl=6 * 3600)
+    return web.json_response({"city": city, **data})
+
+
+async def _today_snapshot(lat: float, lon: float) -> dict:
+    """Kundalik yozuvi uchun bugungi havo: PM10/PM2.5/chang o'rtachasi va eng yuqori harorat."""
+    try:
+        d = await point_data(lat, lon)
+    except Exception:  # noqa: BLE001
+        return {}
+    ah = d["air"]["hourly"]
+    day = d["air"]["current"]["time"][:10]
+    idx = [i for i, t in enumerate(ah["time"]) if t.startswith(day)]
+    avg = lambda k: (lambda v: round(sum(v) / len(v), 1) if v else None)([ah[k][i] for i in idx if ah[k][i] is not None])  # noqa: E731
+    wd = (d["weather"] or {}).get("daily") or {}
+    temp = wd["temperature_2m_max"][wd["time"].index(day)] if day in wd.get("time", []) else None
+    return {"pm10": avg("pm10"), "pm25": avg("pm2_5"), "dust": avg("dust"), "temp": temp, "date": day}
+
+
+async def h_diary_get(request):
+    user = init_user(request)
+    if not user:
+        raise web.HTTPUnauthorized(text="telegram only")
+    u = db.get_user(user["id"])
+    lang = (u["lang"] if u else None) or "uz"
+    entries = db.diary_list(user["id"], health.week_ago(365))
+    city = u["city"] if u and u["city"] in CITIES else None
+    if not city and u and u["lat"] is not None:
+        city = _place_city(None, u["lat"], u["lon"])
+    daily = [{"date": r["date"], "pm10": r["pm10_mean"]} for r in db.archive_rows(city, health.week_ago(90))] if city else []
+    return web.json_response({"consent": bool(u and u["diary_consent"]), "remind": bool(u and u["diary_remind"]),
+                              "entries": entries, "insights": health.insights(entries, lang), "daily": daily,
+                              "symptoms": health.SYMPTOMS, "names": health.tt(lang)["sym"]})
+
+
+async def h_diary_post(request):
+    user = init_user(request)
+    if not user:
+        raise web.HTTPUnauthorized(text="telegram only")
+    body = await request.json()
+    u = db.get_user(user["id"])
+    if not (u and u["diary_consent"]):
+        if not body.get("consent"):
+            return web.json_response({"error": "consent"}, status=403)
+        db.ensure_user(user["id"])
+        db.set_user_field(user["id"], "diary_consent", db.now_local().isoformat(timespec="seconds"))
+        u = db.get_user(user["id"])
+    syms = [s for s in (body.get("symptoms") or []) if s in health.SYMPTOMS or s == "none"][:10] or ["none"]
+    if "none" in syms and len(syms) > 1:
+        syms = [s for s in syms if s != "none"]
+    try:
+        severity = max(0, min(3, int(body.get("severity") or 0)))
+    except (TypeError, ValueError):
+        severity = 0
+    if syms == ["none"]:
+        severity = 0
+    note = str(body.get("note") or "").strip()[:200]
+    lat, lon = (u["lat"], u["lon"]) if u and u["lat"] is not None else (CITIES["toshkent"][2], CITIES["toshkent"][3])
+    city = u["city"] if u and u["city"] in CITIES else _place_city(None, lat, lon)
+    snap = await _today_snapshot(lat, lon)
+    day = snap.get("date") or db.now_local().strftime("%Y-%m-%d")
+    db.diary_upsert(user["id"], day, syms, severity, note, {**snap, "city": city, "lat": round(lat, 2), "lon": round(lon, 2)})
+    return web.json_response({"ok": True, "date": day})
+
+
+async def h_diary_delete(request):
+    user = init_user(request)
+    if not user:
+        raise web.HTTPUnauthorized(text="telegram only")
+    db.diary_delete_all(user["id"])
+    return web.json_response({"ok": True})
+
+
+async def h_diary_report(request):
+    """Shifokor uchun PDF: bot foydalanuvchining chatiga yuboradi."""
+    user = init_user(request)
+    if not user:
+        raise web.HTTPUnauthorized(text="telegram only")
+    bot: Bot | None = request.app.get("bot")
+    if not bot:
+        raise web.HTTPServiceUnavailable(text="bot off")
+    u = db.get_user(user["id"])
+    lang = (u["lang"] if u else None) or "uz"
+    days = 30
+    try:
+        days = max(7, min(365, int((await request.json()).get("days") or 30)))
+    except Exception:  # noqa: BLE001
+        pass
+    entries = db.diary_list(user["id"], health.week_ago(days))
+    if not entries:
+        return web.json_response({"error": "empty"}, status=400)
+    city = entries[-1]["city"]
+    daily = [{"date": r["date"], "pm10": r["pm10_mean"]} for r in db.archive_rows(city, health.week_ago(days))] if city else []
+    place = archive.city_label(city, lang) if city else "—"
+    pdf = await asyncio.to_thread(health.report_pdf, entries, daily, place, lang)
+    try:
+        await bot.send_document(user["id"], BufferedInputFile(pdf, f"chang_hisobot_{db.now_local():%Y-%m-%d}.pdf"),
+                                caption="🩺 " + health.tt(lang)["pdf_title"])
+    except Exception as e:  # noqa: BLE001
+        log.warning("PDF yuborilmadi: %s", e)
+        raise web.HTTPBadGateway(text="telegram error")
+    return web.json_response({"ok": True})
+
+
+async def h_research_csv(request):
+    """Ochiq tadqiqot ma'lumoti: anonim simptomlar statistikasi (kamida 5 kishi bo'lgan kunlar)."""
+    rows = db.research_symptoms(5)
+    syms = health.SYMPTOMS + ["none"]
+    buf = __import__("io").StringIO()
+    w = __import__("csv").writer(buf)
+    w.writerow(["city", "date", "users", "severity_mean", *syms, "pm10_mean", "pm25_mean", "dust_max"])
+    arch = {(r["city"], r["date"]): r for r in db.archive_rows()}
+    for r in rows:
+        a = arch.get((r["city"], r["date"]), {})
+        w.writerow([r["city"], r["date"], r["users"], r["severity_mean"], *[r["counts"].get(s, 0) for s in syms],
+                    a.get("pm10_mean", ""), a.get("pm25_mean", ""), a.get("dust_max", "")])
+    return web.Response(text=buf.getvalue(), content_type="text/csv", charset="utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="chang_research_symptoms.csv"'})
+
+
+async def h_docs(request):
+    return web.FileResponse(WEB_DIR / "docs.html", headers={"Cache-Control": "no-cache"})
+
+
 # ---------------- API: foydalanuvchi sozlamalari ----------------
 async def h_me_get(request):
     user = init_user(request)
@@ -443,7 +599,7 @@ async def h_me_post(request):
             upd.update(city="loc", lat=float(body["lat"]), lon=float(body["lon"]))
         except (KeyError, TypeError, ValueError):
             raise web.HTTPBadRequest(text="lat/lon")
-    for f in ("alerts", "daily"):
+    for f in ("alerts", "daily", "health_tips", "diary_remind"):
         if f in body:
             upd[f] = 1 if body[f] else 0
     db.update_user(user["id"], **upd)
@@ -559,6 +715,14 @@ def make_web_app(bot: Bot | None = None) -> web.Application:
     app.router.add_get("/api/grid", h_grid)
     app.router.add_get("/api/history", h_history)
     app.router.add_get("/api/sensor", h_sensor)
+    app.router.add_get("/api/health", h_health_risk)
+    app.router.add_get("/api/seasons", h_seasons)
+    app.router.add_get("/api/diary", h_diary_get)
+    app.router.add_post("/api/diary", h_diary_post)
+    app.router.add_delete("/api/diary", h_diary_delete)
+    app.router.add_post("/api/diary/report", h_diary_report)
+    app.router.add_get("/api/research/symptoms.csv", h_research_csv)
+    app.router.add_get("/docs", h_docs)
     app.router.add_get("/api/archive", h_archive)
     app.router.add_get("/api/archive.csv", h_archive_csv)
     app.router.add_post("/api/archive/send", h_archive_send)
@@ -799,6 +963,75 @@ async def send_daily(bot: Bot):
         await safe_send(bot, u["user_id"], text, open_kb(lang, "details"))
 
 
+SEASON_TIP_CAT = {"dust": "eyes", "heat": "heat", "cold": "cold", "uv": "uv"}
+
+
+async def send_health_reminders(bot: Bot):
+    """Kechqurun: ertaga profil uchun muhim sog'liq xavfi bo'lsa ogohlantiradi."""
+    today = db.now_local().strftime("%Y-%m-%d")
+    for u in db.users_where("health_tips=1"):
+        if u["last_health"] == today:
+            continue
+        try:
+            d = await point_data(u["lat"], u["lon"])
+        except Exception:  # noqa: BLE001
+            continue
+        lang, profile = u["lang"] or "uz", u["profile"] or "none"
+        dates = sorted({t[:10] for t in d["air"]["hourly"]["time"]})
+        nxt = [x for x in dates if x > today]
+        if not nxt:
+            continue
+        a = health.assess(d["air"], d["weather"], profile, lang, day=nxt[0])
+        sens = health.PROFILE_SENS.get(profile, set())
+        hot = [c for c, key in zip(a["cats"], health.CATS) if c["level"] >= (2 if key in sens else 3)]
+        if not hot:
+            continue
+        t = health.tt(lang)
+        lines = [t["remind_title"].format(place=place_of(u, lang)), ""]
+        for c in hot:
+            lines.append(f"{c['icon']} <b>{c['name']}</b>: {c['level_name']}" + (f" ({', '.join(c['reasons'][:2])})" if c["reasons"] else ""))
+            if c["tips"]:
+                lines.append("   💡 " + c["tips"][0])
+        lines += ["", "<i>" + t["disclaimer"] + "</i>"]
+        await safe_send(bot, u["user_id"], "\n".join(lines), open_kb(lang, "details"))
+        db.set_user_field(u["user_id"], "last_health", today)
+
+
+async def send_diary_reminders(bot: Bot):
+    today = db.now_local().strftime("%Y-%m-%d")
+    for u in db.users_where("diary_remind=1 AND diary_consent IS NOT NULL"):
+        if u["last_diary_remind"] == today or db.diary_has(u["user_id"], today):
+            continue
+        lang = u["lang"] or "uz"
+        await safe_send(bot, u["user_id"], health.tt(lang)["remind_diary"], open_kb(lang))
+        db.set_user_field(u["user_id"], "last_diary_remind", today)
+
+
+async def send_season_starts(bot: Bot):
+    """Oy boshida: yangi mavsum (chang, issiqlik, shamollash, UV) boshlansa xabar beradi."""
+    now = db.now_local()
+    ym, m = now.strftime("%Y-%m"), now.month
+    cache = {}
+    for u in db.users_where("health_tips=1"):
+        if u["last_season"] == ym:
+            continue
+        city = u["city"] if u["city"] in CITIES else _place_city(None, u["lat"], u["lon"])
+        if city not in cache:
+            cache[city] = health.seasons(db.archive_rows(city), "uz")["months"]
+        months = cache[city]
+        cur, prev = months[m - 1], months[(m - 2) % 12]
+        new = [tag for tag in cur["tags"] if tag not in prev["tags"]]
+        db.set_user_field(u["user_id"], "last_season", ym)
+        if not new:
+            continue
+        lang = u["lang"] or "uz"
+        t = health.tt(lang)
+        for tag in new:
+            msg = t["season_start"].format(place=place_of(u, lang), season=t["seasons"][tag],
+                                           detail=health.season_detail(cur, tag, lang), tip=t["tips"][SEASON_TIP_CAT[tag]][0])
+            await safe_send(bot, u["user_id"], msg, open_kb(lang, "details"))
+
+
 async def scheduler(bot: Bot):
     while True:
         now = datetime.now(TZ)
@@ -808,6 +1041,12 @@ async def scheduler(bot: Bot):
             if nxt.hour == DAILY_HOUR:
                 await send_daily(bot)
             await check_alerts(bot)
+            if nxt.hour == 20:
+                await send_health_reminders(bot)
+            if nxt.hour == 21:
+                await send_diary_reminders(bot)
+            if nxt.hour == 9 and nxt.day == 1:
+                await send_season_starts(bot)
         except Exception:  # noqa: BLE001
             log.exception("Scheduler xatosi")
 

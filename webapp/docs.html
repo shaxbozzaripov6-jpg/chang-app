@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chang Monitor: ochiq ma'lumotlar</title>
+  <style>
+    :root { --bg: #f4eee3; --card: #fffdf8; --text: #2a2118; --hint: #7d705e; --accent: #12968b; --line: #e5dccb; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0d1418; --card: #16212a; --text: #f1ece2; --hint: #93a1a8; --accent: #2fc0b2; --line: #24323d; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+    main { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+    h1 { font-size: 28px; margin: 8px 0 4px; letter-spacing: -.02em; }
+    h2 { font-size: 20px; margin: 32px 0 8px; }
+    .lead { color: var(--hint); margin: 0 0 20px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin: 12px 0; }
+    code { background: color-mix(in srgb, var(--accent) 12%, transparent); padding: 1px 6px; border-radius: 6px; font-size: 13.5px; word-break: break-all; }
+    pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; overflow-x: auto; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--hint); font-weight: 600; }
+    a { color: var(--accent); }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); font-size: 12px; font-weight: 700; }
+    .en { color: var(--hint); font-size: 13.5px; }
+  </style>
+</head>
+<body>
+<main>
+  <span class="tag">OCHIQ MA'LUMOTLAR · OPEN DATA</span>
+  <h1>Chang Monitor: tadqiqotchilar uchun</h1>
+  <p class="lead">O'zbekistonning 14 ta shahri bo'yicha 2015 yildan buyongi chang, havo sifati va ob-havo arxivi, hamda foydalanuvchilarning anonim simptomlar statistikasi. Hamma ma'lumot bepul va ochiq.<br>
+  <span class="en">Daily dust, air-quality and weather archive for 14 cities of Uzbekistan since 2015, plus anonymised symptom statistics. Free and open.</span></p>
+
+  <h2>1. Kunlik arxiv · Daily archive</h2>
+  <div class="card">
+    <p><b>CSV (Excel):</b> <code>/api/archive.csv?key=nukus&amp;from=2015&amp;to=2026&amp;lang=en</code></p>
+    <p><b>JSON:</b> <code>/api/archive?key=all&amp;days=0</code></p>
+    <table>
+      <tr><th>Parametr</th><th>Qiymat</th></tr>
+      <tr><td><code>key</code></td><td><code>all</code> yoki shahar: toshkent, nukus, moynoq, urganch, buxoro, navoiy, samarqand, qarshi, termiz, jizzax, guliston, namangan, andijon, fargona</td></tr>
+      <tr><td><code>from</code>, <code>to</code></td><td>yil (<code>2015</code>) yoki sana (<code>2015-03-01</code>)</td></tr>
+      <tr><td><code>days</code></td><td>so'nggi N kun (0 = hammasi) · last N days</td></tr>
+      <tr><td><code>lang</code></td><td><code>uz</code>/<code>ru</code>: ";" ajratuvchi va o'nlik vergul · <code>en</code>: "," va o'nlik nuqta</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <table>
+      <tr><th>Ustun · Column</th><th>Ma'nosi · Meaning</th><th>Birlik</th></tr>
+      <tr><td>pm10_mean / pm10_max</td><td>PM10, kunlik o'rtacha / maksimum</td><td>µg/m³</td></tr>
+      <tr><td>pm25_mean / pm25_max</td><td>PM2.5, kunlik o'rtacha / maksimum</td><td>µg/m³</td></tr>
+      <tr><td>dust_mean / dust_max</td><td>Yer sathidagi mineral chang (2022+)</td><td>µg/m³</td></tr>
+      <tr><td>aod_mean, dust_aod</td><td>Aerozol optik qalinligi 550 nm (umumiy / chang)</td><td>—</td></tr>
+      <tr><td>aqi_max</td><td>AQI, AQSH shkalasi (2022+)</td><td>—</td></tr>
+      <tr><td>o3/no2/so2/co_mean</td><td>Gazlar, kunlik o'rtacha (2022+)</td><td>µg/m³</td></tr>
+      <tr><td>uv_max</td><td>UV indeksi maksimumi (2022+)</td><td>—</td></tr>
+      <tr><td>temp_min/max, rh_mean</td><td>Harorat, nisbiy namlik</td><td>°C, %</td></tr>
+      <tr><td>wind_max, gust_max, precip_sum</td><td>Shamol, shiddat, yog'in</td><td>m/s, mm</td></tr>
+      <tr><td>soil_mean</td><td>Tuproq namligi (0–7 sm)</td><td>m³/m³</td></tr>
+      <tr><td>risk</td><td>Ilovaning chang bo'roni xavfi indeksi (taxminiy)</td><td>0–100</td></tr>
+      <tr><td>sensor_*</td><td>Eng yaqin yer usti datchigi (aqicn.org), kunlik o'rtacha</td><td>AQI, µg/m³</td></tr>
+      <tr><td>src</td><td><code>cams-eac4</code> (2015–2021) yoki <code>open-meteo</code> (2022+)</td><td>—</td></tr>
+    </table>
+  </div>
+
+  <h2>2. Anonim simptomlar statistikasi · Anonymised symptoms</h2>
+  <div class="card">
+    <p><code>/api/research/symptoms.csv</code></p>
+    <p>Foydalanuvchilar ixtiyoriy va rozilik bilan yuritgan sog'liq kundaligidan tuzilgan. Shaxsni aniqlash mumkin bo'lmasligi uchun faqat <b>kamida 5 kishi</b> yozuv qoldirgan shahar-kunlar chiqariladi. Ism, Telegram ID, aniq joylashuv yoki izohlar hech qachon berilmaydi.</p>
+    <p class="en">Built from voluntary, consented symptom diaries. Only city-days with at least 5 distinct users are published (k-anonymity). No names, IDs, exact locations or notes are ever shared.</p>
+    <p>Ustunlar: city, date, users, severity_mean (0–3), har bir simptom soni (cough, breath, wheeze, eyes, nose, throat, headache, fatigue, skin, fever, none), pm10_mean, pm25_mean, dust_max.</p>
+  </div>
+
+  <h2>3. Manbalar va litsenziya · Sources and licence</h2>
+  <div class="card">
+    <ul>
+      <li>Chang va havo sifati 2022+: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, Copernicus Atmosphere Monitoring Service (CAMS) asosida, CC BY 4.0.</li>
+      <li>Chang va PM 2015–2021: Copernicus CAMS global reanalysis (EAC4). Copernicus mahsulotlaridan foydalanish litsenziyasi.</li>
+      <li>Ob-havo: Open-Meteo Historical Weather (ERA5 reanalizi), CC BY 4.0.</li>
+      <li>Yer usti datchiklari: World Air Quality Index Project (aqicn.org).</li>
+    </ul>
+    <p>Ma'lumotlar model va reanaliz natijalari: ular haqiqiy o'lchovdan farq qilishi mumkin. Tibbiy qaror qabul qilish uchun ishlatmang.</p>
+    <p class="en">Values come from models and reanalyses and may differ from ground measurements. Not for clinical decisions.</p>
+  </div>
+
+  <h2>4. Iqtibos · How to cite</h2>
+  <pre>Chang Monitor (2026). Daily dust, air quality and weather archive for Uzbekistan, 2015–present.
+Data: Copernicus Atmosphere Monitoring Service (CAMS), Open-Meteo, ERA5, aqicn.org.</pre>
+  <p class="lead">Savollar va hamkorlik uchun Telegram botga yozing. · Contact us via the Telegram bot.</p>
+</main>
+</body>
+</html>
