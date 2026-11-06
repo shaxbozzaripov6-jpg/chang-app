@@ -533,3 +533,21 @@ details .content { margin-top: 10px; font-size: 14px; }
 .range select { width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--soft);
   color: var(--text); font: inherit; font-weight: 700; }
 .range span { padding-bottom: 10px; color: var(--hint); }
+
+/* ================= 7 kunlik prognoz ================= */
+.wrow { display: grid; grid-template-columns: 78px 34px 1fr 48px; grid-template-areas: "d e t p" "s s s s";
+  gap: 4px 10px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.wrow:last-of-type { border-bottom: 0; }
+.w-day { grid-area: d; display: grid; line-height: 1.2; }
+.w-day b { font-weight: 750; font-size: 14.5px; }
+.w-day span { font-size: 11.5px; color: var(--hint); }
+.w-emoji { grid-area: e; font-size: 24px; text-align: center; }
+.w-temp { grid-area: t; display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+.w-temp .tmin { color: var(--hint); text-align: right; }
+.tbar { position: relative; height: 6px; border-radius: 3px; background: var(--soft); }
+.tbar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #4fa3e0, var(--qum), var(--orik)); }
+.w-pm { grid-area: p; text-align: right; }
+.pm-badge { display: inline-block; min-width: 40px; padding: 4px 7px; border-radius: 999px; color: #fff; font-weight: 800; font-size: 12.5px; text-align: center; }
+.w-sub { grid-area: s; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--hint); padding-left: 2px; }
+.w-sub span { white-space: nowrap; }
+.w-legend { text-align: right; margin-top: 6px; }

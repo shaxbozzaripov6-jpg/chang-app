@@ -751,24 +751,42 @@
     const daily = d.weather && d.weather.daily;
     const wd = WEEKDAYS_LONG[state.lang];
     const riskDays = (d.risk && d.risk.days) || [];
-    let html = `<div class="days">`;
-    d.days.forEach((day) => {
-      const dt = new Date(day.date + "T12:00");
-      const wi = daily ? daily.time.indexOf(day.date) : -1;
-      const w = (k) => (wi >= 0 ? daily[k][wi] : null);
-      const rd = riskDays.find((x) => x.date === day.date);
-      html += `<div class="day" style="--lc:${levelColor(day.pm10)}">
-        <div class="d-name">${esc(wd[dt.getDay()])}</div>
-        <div class="d-date">${day.date.slice(8, 10)}.${day.date.slice(5, 7)}</div>
-        <div class="d-emoji">${wi >= 0 ? weatherEmoji(w("weather_code")) : "🌫"}</div>
-        ${wi >= 0 ? `<div class="d-temp">${fmt(w("temperature_2m_max"))}° <span>${fmt(w("temperature_2m_min"))}°</span></div>` : ""}
-        <div class="d-pm">PM10 ${fmt(day.pm10)}</div>
-        <div class="d-row">${esc(levelName(day.pm10))}</div>
-        ${rd ? `<div class="d-risk" style="--rc:${RISK_COLORS[rd.level]}">🎯 ${esc(tr("riskShort"))} ${rd.score}</div>` : ""}
-        ${wi >= 0 ? `<div class="d-row">☔ ${fmt(w("precipitation_sum"), 1)} ${tr("mm")} · ${fmt(w("precipitation_probability_max"))}%</div>
-        <div class="d-row">💨 ${fmt(w("wind_speed_10m_max"))}–${fmt(w("wind_gusts_10m_max"))} ${tr("ms")}</div>` : ""}
-      </div>`;
+    // Kunlar ro'yxati: ob-havo (7 kun) va chang (≈5 kun) birlashtiriladi
+    const dates = [...new Set([...(daily ? daily.time : []), ...d.days.map((x) => x.date)])].sort().slice(0, 7);
+    const wv = (k, wi) => (wi >= 0 && daily[k] ? daily[k][wi] : null);
+    const tmins = dates.map((dt) => wv("temperature_2m_min", daily ? daily.time.indexOf(dt) : -1)).filter((v) => v !== null);
+    const tmaxs = dates.map((dt) => wv("temperature_2m_max", daily ? daily.time.indexOf(dt) : -1)).filter((v) => v !== null);
+    const lo = Math.min(...tmins), hi = Math.max(...tmaxs), span = Math.max(1, hi - lo);
+    const today = todayStr();
+    const tomorrow = new Date(new Date(today + "T12:00").getTime() + 864e5).toLocaleDateString("en-CA");
+    let missingPm = false;
+
+    let html = `<div class="card week"><h4>${esc(tr("forecast7"))}</h4>`;
+    dates.forEach((date) => {
+      const dt = new Date(date + "T12:00");
+      const wi = daily ? daily.time.indexOf(date) : -1;
+      const day = d.days.find((x) => x.date === date) || {};
+      const rd = riskDays.find((x) => x.date === date);
+      const hasPm = day.pm10 !== null && day.pm10 !== undefined;
+      if (!hasPm) missingPm = true;
+      const name = date === today ? tr("todayCap") : date === tomorrow ? tr("tomorrowCap") : wd[dt.getDay()];
+      const tmin = wv("temperature_2m_min", wi), tmax = wv("temperature_2m_max", wi);
+      const bar = tmin !== null && tmax !== null
+        ? `<span class="tbar"><i style="left:${(100 * (tmin - lo) / span).toFixed(0)}%;width:${Math.max(6, 100 * (tmax - tmin) / span).toFixed(0)}%"></i></span>` : `<span class="tbar"></span>`;
+      html += `<div class="wrow">
+        <div class="w-day"><b>${esc(name)}</b><span>${date.slice(8, 10)}.${date.slice(5, 7)}</span></div>
+        <div class="w-emoji">${wi >= 0 ? weatherEmoji(wv("weather_code", wi)) : "🌫"}</div>
+        <div class="w-temp"><span class="tmin">${fmt(tmin)}°</span>${bar}<span class="tmax">${fmt(tmax)}°</span></div>
+        <div class="w-pm"><span class="pm-badge" style="background:${hasPm ? levelColor(day.pm10) : "var(--line)"}">${hasPm ? fmt(day.pm10) : "—"}</span></div>
+        <div class="w-sub">
+          ${hasPm ? `<span style="color:${levelColor(day.pm10)}">● ${esc(levelName(day.pm10))}</span>` : `<span class="muted">${esc(tr("noPm"))}</span>`}
+          ${rd && hasPm ? `<span style="color:${RISK_COLORS[rd.level]}">🎯 ${rd.score}</span>` : ""}
+          ${wi >= 0 ? `<span>☔ ${fmt(wv("precipitation_sum", wi), 1)} ${tr("mm")} · ${fmt(wv("precipitation_probability_max", wi))}%</span>
+          <span>💨 ${fmt(wv("wind_speed_10m_max", wi))}–${fmt(wv("wind_gusts_10m_max", wi))} ${tr("ms")}</span>` : ""}
+        </div></div>`;
     });
+    html += `<div class="w-legend muted small">PM10 µg/m³ (${esc(tr("max"))}) · 🎯 ${esc(tr("riskShort"))}</div>`;
+    if (missingPm) html += `<p class="muted small" style="margin:8px 0 0">${esc(tr("pmNote"))}</p>`;
     html += `</div>`;
     html += `<div class="card"><h4>${esc(tr("dustChart"))}</h4><div class="chart-box tall"><canvas id="chartDust"></canvas></div></div>`;
     if (d.weather && d.weather.hourly) {

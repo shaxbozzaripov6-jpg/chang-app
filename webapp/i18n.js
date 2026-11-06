@@ -1,6 +1,8 @@
 // Ilova interfeysi matnlari: o'zbekcha (asosiy), ruscha, inglizcha
 window.I18N = {
   uz: {
+    forecast7: "📅 7 kunlik prognoz", todayCap: "Bugun", tomorrowCap: "Ertaga", noPm: "chang prognozi yo'q",
+    pmNote: "Chang prognozi Copernicus modeli bo'yicha taxminan 5 kunga beriladi. Qolgan kunlar uchun faqat ob-havo ko'rsatiladi.",
     yearSummary: "{y}-yilda {d} ta changli kun bo'ldi ({n} kun ma'lumoti).",
     yearsTab: "Yillar", allYears: "Barcha yillar", yearlyTable: "Yillar bo'yicha (PM10, µg/m³)", tapYear: "yilni bosing",
     colYear: "Yil", colAvg: "O'rtacha", colDusty: "Changli kun", colWho: "JSST dan oshgan", colMax: "Maks",
@@ -33,7 +35,7 @@ window.I18N = {
     airQuality: "Havo sifati", pm25: "PM2.5", dust: "Chang", aod: "Aerozol (AOD)",
     humidity: "Namlik", weather: "Ob-havo", feels: "His qilinadi", wind: "Shamol",
     gusts: "Shiddati", precip: "Yog'in", direction: "Yo'nalish", next24: "Keyingi 24 soat (PM10)",
-    forecast3: "3 kunlik prognoz", dustChart: "Chang, 72 soat", windChart: "Shamol, 72 soat",
+    forecast3: "7 kunlik prognoz", dustChart: "Chang, 7 kun", windChart: "Shamol, 7 kun",
     windSpeed: "Tezlik", strongWind: "kuchli shamol",
     warnDust: "Chang kuchayishi kutilmoqda: {when}, soat {hour} atrofida PM10 ≈ {pm10} µg/m³",
     warnWind: "Kuchli shamol: {when}, soat {hour} atrofida shiddati {gust} m/s gacha. Chang ko'tarilishi mumkin.",
@@ -125,6 +127,8 @@ window.I18N = {
     },
   },
   ru: {
+    forecast7: "📅 Прогноз на 7 дней", todayCap: "Сегодня", tomorrowCap: "Завтра", noPm: "нет прогноза пыли",
+    pmNote: "Прогноз пыли по модели Copernicus доступен примерно на 5 дней. Для остальных дней показана только погода.",
     yearSummary: "В {y} году было {d} пыльных дней (данные за {n} дней).",
     yearsTab: "Годы", allYears: "Все годы", yearlyTable: "По годам (PM10, µg/m³)", tapYear: "нажмите на год",
     colYear: "Год", colAvg: "Среднее", colDusty: "Пыльных дней", colWho: "Выше ВОЗ", colMax: "Макс",
@@ -157,7 +161,7 @@ window.I18N = {
     airQuality: "Качество воздуха", pm25: "PM2.5", dust: "Пыль", aod: "Аэрозоль (AOD)",
     humidity: "Влажность", weather: "Погода", feels: "Ощущается", wind: "Ветер",
     gusts: "Порывы", precip: "Осадки", direction: "Направление", next24: "Ближайшие 24 часа (PM10)",
-    forecast3: "Прогноз на 3 дня", dustChart: "Пыль, 72 часа", windChart: "Ветер, 72 часа",
+    forecast3: "Прогноз на 7 дней", dustChart: "Пыль, 7 дней", windChart: "Ветер, 7 дней",
     windSpeed: "Скорость", strongWind: "сильный ветер",
     warnDust: "Ожидается усиление пыли: {when}, около {hour} PM10 ≈ {pm10} µg/m³",
     warnWind: "Сильный ветер: {when}, около {hour} порывы до {gust} м/с. Может подняться пыль.",
@@ -240,6 +244,8 @@ window.I18N = {
     },
   },
   en: {
+    forecast7: "📅 7-day forecast", todayCap: "Today", tomorrowCap: "Tomorrow", noPm: "no dust forecast",
+    pmNote: "The Copernicus dust forecast covers about 5 days. For the remaining days only the weather is shown.",
     yearSummary: "{y} had {d} dusty days ({n} days of data).",
     yearsTab: "Years", allYears: "All years", yearlyTable: "By year (PM10, µg/m³)", tapYear: "tap a year",
     colYear: "Year", colAvg: "Mean", colDusty: "Dusty days", colWho: "Above WHO", colMax: "Max",
@@ -272,7 +278,7 @@ window.I18N = {
     airQuality: "Air quality", pm25: "PM2.5", dust: "Dust", aod: "Aerosol (AOD)",
     humidity: "Humidity", weather: "Weather", feels: "Feels like", wind: "Wind",
     gusts: "Gusts", precip: "Precipitation", direction: "Direction", next24: "Next 24 hours (PM10)",
-    forecast3: "3-day forecast", dustChart: "Dust, 72 hours", windChart: "Wind, 72 hours",
+    forecast3: "7-day forecast", dustChart: "Dust, 7 days", windChart: "Wind, 7 days",
     windSpeed: "Speed", strongWind: "strong wind",
     warnDust: "Dust expected to rise: {when}, around {hour} PM10 ≈ {pm10} µg/m³",
     warnWind: "Strong wind: {when}, around {hour} gusts up to {gust} m/s. Dust may be lifted.",

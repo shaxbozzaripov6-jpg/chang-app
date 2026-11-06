@@ -14,7 +14,7 @@ Birinchi bot (`chang-bot`) o'zgarmaydi va alohida ishlayveradi.
 - 📸 **Bo'ron rasmlari**: yaqin atrofdagi rasmlar va ilovadan rasm yuborish
 - Ob-havo, shamol kompasi, 24 soatlik grafik, ogohlantirishlar
 
-**📈 Prognoz**: 3 kunlik kartochkalar (bo'ron xavfi bilan), 72 soatlik chang va shamol grafiklari
+**📈 Prognoz**: 7 kunlik prognoz (harorat, chang, bo'ron xavfi, yog'in, shamol), 7 kunlik chang va shamol grafiklari. Chang prognozi taxminan 5 kunga beriladi
 
 **🗺 Xarita**
 - 🏙 Shaharlar: 14 shahar chang darajasi rangida va 📸 bo'ron rasmlari

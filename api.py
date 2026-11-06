@@ -13,7 +13,7 @@ async def get_air(lat: float, lon: float) -> dict:
                     "carbon_monoxide,sulphur_dioxide,uv_index"),
         "hourly": "pm10,pm2_5,dust",
         "timezone": "Asia/Tashkent",
-        "forecast_days": 3,
+        "forecast_days": 7,
     }
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as s:
@@ -28,12 +28,15 @@ def daily_summary(data: dict) -> list[dict]:
     days: dict[str, dict] = {}
     for i, t in enumerate(h["time"]):
         day, hour = t.split("T")
-        d = days.setdefault(day, {"date": day, "pm10": 0, "pm2_5": 0, "dust": 0, "peak": hour})
-        pm10 = h["pm10"][i] or 0
-        if pm10 > d["pm10"]:
+        d = days.setdefault(day, {"date": day, "pm10": None, "pm2_5": None, "dust": None, "peak": None})
+        pm10 = h["pm10"][i]
+        if pm10 is not None and (d["pm10"] is None or pm10 > d["pm10"]):
             d["pm10"], d["peak"] = pm10, hour
-        d["pm2_5"] = max(d["pm2_5"], h["pm2_5"][i] or 0)
-        d["dust"] = max(d["dust"], h["dust"][i] or 0)
+        for k in ("pm2_5", "dust"):
+            v = h[k][i]
+            if v is not None:
+                d[k] = v if d[k] is None else max(d[k], v)
+    # Chang prognozi ~5 kunga beriladi: qolgan kunlarda qiymat None bo'lib qoladi
     return list(days.values())
 
 
@@ -68,7 +71,7 @@ async def get_weather(lat: float, lon: float) -> dict:
                   "wind_direction_10m_dominant"),
         "wind_speed_unit": "ms",
         "timezone": "Asia/Tashkent",
-        "forecast_days": 3,
+        "forecast_days": 7,
     }
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(timeout=timeout) as s:
